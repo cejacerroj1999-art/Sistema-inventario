@@ -7,3 +7,6 @@ streamlit-cookies-controller==0.0.4
 Pillow>=10,<13
 zxing-cpp>=2.3,<3
 pytest>=8,<10
+defusedxml>=0.7,<1
+pdfplumber>=0.11,<1
+pytesseract>=0.3.13,<1
