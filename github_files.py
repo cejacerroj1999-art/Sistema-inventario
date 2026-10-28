@@ -23,8 +23,12 @@ class GitHubFiles:
             ext = 'png'
         elif data.startswith(b'\xff\xd8\xff'):
             ext = 'jpg'
+        elif file.name.lower().endswith('.xml'):
+            from invoice_import import read_xml
+            read_xml(data)
+            ext = 'xml'
         else:
-            raise ValueError('Sólo PDF, PNG o JPEG válidos')
+            raise ValueError('Sólo PDF, PNG, JPEG o XML DTE válidos')
         digest = hashlib.sha256(data).hexdigest()
         folder = 'Facturas' if kind == 'factura' else 'boletas'
         path = f'{folder}/{digest}.{ext}'
