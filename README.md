@@ -1,220 +1,148 @@
-# Sistema de inventario · Python, Streamlit, Supabase y GitHub
+# Inventario · acceso con usuario y contraseña
 
-Base funcional para **un negocio y una bodega**, preparada para configurar y probar antes de usar con inventario real. No se ha desplegado ni conectado a cuentas externas. La interfaz está en español y los valores monetarios se expresan en CLP. Python recomendado: 3.12.
+Aplicación Python y Streamlit, base PostgreSQL en Supabase y archivos privados en GitHub. Esta versión **no usa Google ni otro proveedor externo de inicio de sesión**. Cada persona entra con un usuario y una contraseña del sistema.
 
-## Qué incluye y qué falta
+## Si ya instalaste la versión anterior
 
-Incluye catálogo, tipos de producto editables, proveedores, tres roles, documentos pendientes, detalle por producto, autorización transaccional, ventas manuales, boletas, costo promedio ponderado, alertas por umbral, historial persistente, validación administrativa, cámara por fotografía, archivos en GitHub privado y descarga desde el servidor.
+No vuelvas a ejecutar `001_schema.sql`, no borres las tablas y no vuelvas a crear tu administrador.
 
-**Decisión de autenticación:** esta entrega usa Google OIDC con `st.login()`, no usuario/contraseña propios ni Supabase Auth. `usuarios` es el directorio de personas autorizadas y roles. Se valida el correo verificado con Google y se consulta si sigue activo en cada interacción. Si necesitas usuario/clave internos, hay que reemplazar este módulo por Supabase Auth y gestionar correctamente la persistencia y renovación de sus sesiones. No agregues una columna con contraseñas en texto plano ni cifrado reversible.
+1. Reemplaza los archivos Python y `requirements.txt` por los de este paquete.
+2. En SQL Editor de Supabase ejecuta **todo el contenido** de `sql/003_acceso_local.sql`. Es una actualización que conserva usuarios, productos, documentos e historial. No pegues el nombre del archivo como consulta.
+3. En tu `.streamlit/secrets.toml` conserva Supabase y GitHub. Elimina `[auth]` y todas sus líneas de Google. Añade los valores indicados en el apartado siguiente, **fuera de cualquier sección `[auth]`**.
+4. Instala dependencias: `python -m pip install -r requirements.txt`.
+5. Copia el UUID de tu administrador existente en Table Editor → usuarios → id.
+6. Desde la raíz del proyecto ejecuta `python scripts/configurar_acceso.py`. Pega el UUID, elige el usuario de acceso (ejemplo `hector.admin`) y escribe dos veces su contraseña. La terminal no muestra los caracteres de la contraseña mientras escribes: es normal. Necesita al menos 10 caracteres y un máximo de 72 bytes UTF-8.
+7. Ejecuta `streamlit run app.py` y entra con tus nuevas credenciales.
 
-No incluye OCR ni extracción automática de PDF/XML, emisión tributaria, integración con SII, lotes, vencimientos, devoluciones, anulaciones, múltiples bodegas ni separación de unidades/cajas. El usuario registra las líneas del documento y verifica sus cantidades. La cámara decodifica **una fotografía**, no video continuo. Los detalles pendientes todavía no tienen pantalla de edición/rechazo: revisa antes de guardarlos; un pendiente incorrecto no cambia stock, pero requiere una ampliación del flujo para corregirlo sin intervención técnica. El historial de movimientos es persistente; el carrito de un formulario sin guardar se pierde si recargas o sales.
+El correo del administrador que creaste antes puede quedarse como contacto; no necesitas tener cuenta de Google. La actualización agrega el campo `login` para el usuario de acceso y mantiene `usuario` como nombre para mostrar. Los demás usuarios existentes quedan sin acceso hasta asignarles un login y una clave desde Usuarios. El primer administrador puede asignárselos.
 
-No es una versión certificada para producción. Hay pruebas locales del cálculo y de similitud; faltan pruebas de integración en tu Supabase, permisos reales, Google, GitHub, cámara y concurrencia. No se garantiza continuidad durante fallas de red, expiración de credenciales o errores del servidor.
+## Secretos
 
-## Arquitectura
+El archivo de ejemplo es `.streamlit/secrets.example.toml`. Cópialo como `.streamlit/secrets.toml` y completa tus valores reales:
 
-El navegador muestra la aplicación Streamlit. El proceso Python del servidor recibe las acciones, identifica al usuario mediante OIDC y habla con Supabase y GitHub. Streamlit cumple el papel de interfaz y servidor de aplicación; Supabase aporta PostgreSQL y su API. GitHub guarda el código y, conforme a lo solicitado, los documentos.
+```toml
+SUPABASE_URL = "https://TU-PROYECTO.supabase.co"
+SUPABASE_SERVICE_KEY = "TU_CLAVE_SERVICE_ROLE"
+GITHUB_TOKEN = "TU_TOKEN_GITHUB"
+GITHUB_REPO = "tu-usuario/tu-repositorio-privado"
+GITHUB_BRANCH = "main"
 
-Los archivos se suben con la API Contents de GitHub a `Facturas/` y `boletas/`. Se usan nombres derivados del SHA-256 del contenido, evitando colisiones entre nombres originales. Supabase conserva el enlace, la ruta y el SHA del blob de GitHub. La descarga se hace con el token del servidor: los usuarios no necesitan un token propio de GitHub. El enlace web de un repositorio privado sólo es visible para colaboradores autorizados; el botón de descarga de la app sí funciona para sus usuarios.
+# False sólo cuando pruebas con HTTP en tu computador.
+COOKIE_SECURE = false
+SESSION_COOKIE_NAME = "inventario_sesion"
+```
 
-GitHub y Supabase no comparten transacción. Primero se sube el archivo y luego se registra el documento. Si falla la segunda parte puede quedar un archivo huérfano en GitHub. El reintento reutiliza la ruta por hash. No borres archivos automáticamente tras un timeout: la transacción SQL podría haberse confirmado. Para mayor volumen conviene pasar los documentos a Supabase Storage privado y conservar GitHub para el código, pero esta base mantiene la ubicación que pediste.
+En el despliegue HTTPS utiliza **`COOKIE_SECURE = true`**. Si está en true mientras usas HTTP local, el navegador puede rechazar la cookie y perderás persistencia al recargar. El nombre de cookie debe ser diferente para aplicaciones distintas que compartan dominio. Guarda estos mismos valores en Secrets de tu despliegue Streamlit. Nunca subas `secrets.toml`, el token de GitHub ni la clave de servicio a Git; `.gitignore` lo excluye.
 
-## Permisos
+Ya no se utilizan `redirect_uri`, `client_id`, `client_secret`, `server_metadata_url` ni `cookie_secret`. No hace falta un secreto de firma propio porque las sesiones usan tokens aleatorios opacos verificados en la base de datos, no JWT generados por esta app.
+
+## Instalación nueva desde cero
+
+1. Crea un repositorio privado GitHub con rama inicial `main` y copia el contenido de esta carpeta en su raíz. Crea un token fine-grained restringido a ese repositorio, con permiso Contents: Read and write. Las protecciones de rama pueden impedir las subidas: verifica que permita los commits del token.
+2. Crea un proyecto Supabase nuevo y ejecuta `sql/001_schema.sql` completo en SQL Editor, una sola vez. Luego ejecuta `sql/003_acceso_local.sql` completo.
+3. Crea el primer administrador en SQL Editor:
+
+```sql
+insert into public.usuarios(usuario,email,rol)
+values ('Héctor','tu-correo@example.com','administrador');
+```
+
+El correo es opcional después de 003 y no interviene en el login. El UUID se genera automáticamente. No uses como clave el UUID ni la clave de servicio.
+
+4. Instala Python 3.12, crea un entorno con `python -m venv .venv` y actívalo. En PowerShell: `.venv\Scripts\Activate.ps1`. En Linux/macOS: `source .venv/bin/activate`.
+5. Ejecuta `python -m pip install -r requirements.txt`.
+6. Configura secretos y asigna las credenciales del primer administrador con el script explicado arriba.
+7. Ejecuta `streamlit run app.py`.
+8. Para publicar, conecta el repositorio privado a tu hosting Streamlit, selecciona `app.py`, copia los secretos y habilita `COOKIE_SECURE = true` en HTTPS. No necesitas configurar callbacks OAuth ni Google Cloud.
+
+## Contraseñas y sesiones
+
+- Las contraseñas se convierten a **hash bcrypt con sal aleatoria y costo 12**. No se almacenan en texto plano, ni como cifrado reversible. El hash se genera en Python y PostgreSQL lo comprueba mediante pgcrypto. La contraseña se envía únicamente al servidor de autenticación mediante HTTPS/TLS; no se guarda en el historial ni en operaciones.
+- Los hashes están separados en `credenciales`, que no se muestra en la app. `service_role` no tiene permiso SELECT directo sobre esa tabla; sólo puede llamar las funciones de autenticación autorizadas.
+- Cinco intentos incorrectos bloquean esa cuenta durante 15 minutos. El contador está en Supabase, por lo que recargar no lo reinicia. No hay todavía limitador global por IP ni recuperación automática por email. El administrador restablece las claves desde Usuarios; el script local sirve para recuperar el administrador si conservas acceso a los secretos del servidor.
+- Tras el login se genera un token aleatorio de 256 bits. Sólo su SHA-256 se guarda en `sesiones`; el token real queda en una cookie del navegador, sin contraseña ni rol. La sesión se comprueba en la base de datos en cada interacción. **No se guarda el token en URLs.**
+- La cookie mantiene el acceso al recargar y tiene una duración máxima de **30 días**, con el mismo vencimiento en Supabase. Cerrar sesión revoca el token en la base y elimina la cookie. Si se copia ese mismo token a otra pestaña, también queda inválido al volver a interactuar. Cambiar la contraseña, cambiar el login o desactivar la cuenta revoca sus sesiones.
+- No se promete persistencia ilimitada: borrar cookies, usar navegación privada, un proxy que no reenvíe cookies o llegar al vencimiento puede pedir login de nuevo. El carrito sin guardar sigue siendo temporal y puede perderse al recargar.
+- La cookie se escribe con un componente JavaScript, con SameSite=Strict y Secure en HTTPS. **No es HttpOnly.** Para un despliegue con requisitos más estrictos, usa un servidor de autenticación o proxy que emita Set-Cookie HttpOnly; esa infraestructura no está incluida. No incrustes contenido HTML/JS de usuarios en la app. Prueba la persistencia en el dominio final y en los celulares reales antes de usarla con ventas.
+- La clave `service_role` sigue siendo exclusiva del proceso Python. El navegador nunca la recibe. Las funciones reciben el actor elegido por el servidor después de validar la sesión. Las APIs de estas tablas y funciones están bloqueadas para `anon` y `authenticated`; **esta aplicación no usa Supabase Auth**. No habilites políticas públicas para resolver errores de configuración.
+
+En Usuarios, el administrador elige nombre para mostrar, login único, rol, estado activo y contraseña. El correo es sólo de contacto y opcional. Al editar, dejar vacíos los dos campos de contraseña conserva la actual. Escribir una contraseña nueva restablece la clave y revoca las sesiones anteriores. La cuenta debe permanecer activa y siempre debe quedar al menos un administrador activo.
+
+## Funciones del inventario
 
 | Acción | Administrador | Bodeguero | Vendedor |
 |---|---|---|---|
-| Gestionar usuarios | Sí | No | No |
+| Gestionar usuarios y restablecer claves | Sí | No | No |
 | Agregar proveedores | Sí | No | No |
-| Listar proveedores | Sí | Sí | No |
-| Ver inventario completo y costos | Sí | Sí | No |
-| Crear/modificar catálogo y precio | Sí | Sí | No |
+| Ver proveedores | Sí | Sí | No |
+| Ver inventario y costos | Sí | Sí | No |
+| Crear/modificar productos y precio | Sí | Sí | No |
 | Ajustar stock con motivo | Sí | Sí | No |
-| Cargar/autorizar facturas | Sí | Sí | No |
-| Registrar venta manual o boleta | Sí | No | Sí |
+| Cargar y autorizar facturas | Sí | Sí | No |
+| Venta manual o con boleta | Sí | No | Sí |
 | Listar/descargar facturas | Sí | Sí | No |
 | Listar/descargar boletas | Sí | No | Sí |
-| Ver bajo stock | Sí | Sí | Sí |
+| Consultar bajo stock | Sí | Sí | Sí |
 | Revisar y validar historial | Sí | No | No |
 
-El vendedor consulta el catálogo en su registro de ventas y ve existencias/precios en bajo stock, sin costos. Una autorización de factura o boleta **aplica stock inmediatamente**. La validación del administrador es una revisión posterior: no vuelve a sumar ni restar. No se impide que el mismo bodeguero cargue y autorice una factura, conforme a lo solicitado.
+El vendedor busca productos por nombre/código al vender. Puede consultar bajo stock sin ver costos. El menú incluye Volver a la página anterior y permanece disponible si falla una sección. Si falla la conexión antes de autenticar, sólo se muestra un error genérico y se permite reintentar; no se muestra inventario sin sesión.
 
-Las reglas de escritura se comprueban también en `operar()`, no sólo ocultando botones. Esa función sólo se concede al rol `service_role`. La clave se guarda en el servidor; la identidad `p_actor` la establece Python, no se toma de un campo del formulario. RLS bloquea a `anon` y `authenticated`, sin políticas públicas. Este diseño **no** usa `auth.uid()` ni sesiones de Supabase Auth: no mezcles sus políticas con este modelo sin rediseñarlo. Las lecturas con `service_role` pueden ver todas las filas, por lo que el filtrado de lecturas por rol es responsabilidad del servidor. No uses esta arquitectura con un frontend que reciba la clave de servicio.
+### Documentos y stock
 
-## Tablas y llaves foráneas
+1. El administrador crea proveedores y los productos del catálogo con código de barras, nombre, tipo, precio de venta y umbral de bajo stock.
+2. Al escribir un nombre se sugieren coincidencias: confirma si es el mismo producto; el sistema no fusiona automáticamente productos de distinto formato que tengan nombres parecidos.
+3. Al registrar una factura selecciona proveedor, folio, fecha, archivo y detalle, indicando cantidad y costo de compra por línea. Los códigos deben estar completos antes de autorizar. El código de barras es texto para conservar ceros iniciales.
+4. Guardar crea un pendiente. En Documentos revisa las líneas, marca la confirmación y pulsa Autorizar. El stock y el historial se actualizan en una única transacción. Una aprobación repetida no vuelve a aplicar existencias. Un fallo en cualquier línea revierte todo.
+5. Las boletas y salidas manuales siguen el mismo flujo, pero restan stock al autorizar. No se permite stock negativo. **No registres una venta manual y luego su boleta como otra venta independiente**: duplicaría la rebaja. El enlace posterior entre ambas modalidades todavía no está implementado.
+6. Validar un movimiento en Historial es una revisión posterior del administrador; no vuelve a cambiar stock.
 
-Se consolidan facturas, boletas y salidas manuales en `documentos`, con una columna `tipo`. Esto evita repetir lógica transaccional. `documento_detalle` es el detalle de cualquiera de ellos. Si prefieres los nombres físicos `factura`, `boletas`, `factura_detalle`, se puede adaptar el esquema; esta entrega no crea esas tablas por separado.
+La carga de PDF/imagen **no extrae automáticamente sus productos**: no incluye OCR ni lector DTE/XML. La cámara decodifica códigos desde una fotografía, no un video continuo. En celular requiere HTTPS y autorización de cámara.
 
-| Tabla/columna | Referencia | Para qué sirve |
-|---|---|---|
-| documentos.proveedor_id | proveedor.id | Proveedor de una factura |
-| documentos.usuario_id | usuarios.id | Quién cargó el documento |
-| documentos.aprobado_por | usuarios.id | Quién autorizó |
-| documento_detalle.documento_id | documentos.id | Cabecera del documento |
-| documento_detalle.producto_id | productos.id | Producto real del catálogo |
-| historial.usuario_id | usuarios.id | Autor del movimiento |
-| historial.producto_id | productos.id | Producto afectado, o NULL |
-| historial.documento_id | documentos.id | Documento relacionado, o NULL |
-| validaciones.historial_id | historial.id | Movimiento revisado |
-| validaciones.usuario_id | usuarios.id | Administrador que revisó |
-
-Ejemplo: no guardas el nombre del proveedor como relación. Guardas su UUID en `documentos.proveedor_id`. La FK obliga a que ese UUID exista en `proveedor.id`, y evita eliminar el proveedor si hay facturas que lo usan. Para mostrar el nombre, se hace un JOIN o una consulta relacionada de Supabase. El código usa consultas relacionadas en el detalle de documentos.
-
-**Factura:** el identificador técnico es un UUID y `numero` conserva el folio real como texto. Dos proveedores pueden entregar la factura `123`; por eso se impone `UNIQUE(proveedor_id, numero)` únicamente para facturas. El folio es la identidad comercial dentro de ese proveedor. Si incorporas distintos tipos tributarios, agrega el tipo DTE a la restricción. En boletas se asume un único emisor y folio único global. `venta_dia` es un correlativo separado que comienza en 1 por fecha y se asigna al autorizar tanto boletas como ventas manuales.
-
-**Inventario:** no hay dos copias del stock. `productos` guarda los valores reales y `inventario` es una vista SQL que agrega `valor_total`. Cada lectura muestra los datos actuales de productos. Las nuevas lecturas no requieren sincronizar otra tabla. Otros navegadores requieren pulsar Recargar datos o realizar una interacción para consultar de nuevo; no hay actualización push en tiempo real.
-
-## UUID: cómo se genera
-
-Un UUID es un identificador de 128 bits, habitualmente representado por 36 caracteres con guiones, por ejemplo `2c6e96a4-21d9-4c5c-99f0-05886bcc6014`. El tipo PostgreSQL es `uuid`, no `varchar(36)`. No es una contraseña ni sustituye los permisos.
-
-```sql
-id uuid primary key default gen_random_uuid()
-```
-
-Cuando insertas una fila sin `id`, PostgreSQL lo genera. Al crear un registro relacionado recuperas ese ID y lo guardas en su FK. También puedes generar un UUID en Python:
-
-```python
-from uuid import uuid4
-operacion_id = str(uuid4())
-```
-
-Aquí se utiliza como clave de idempotencia. Si una petición se reintenta con el mismo UUID y los mismos datos, devuelve el resultado anterior sin repetir el movimiento. Además, el estado aprobado de cada documento evita aplicar dos veces el stock incluso usando otro UUID de operación.
-
-## Costos, stock e historial
-
-El costo es **promedio ponderado por unidades**:
+El costo promedio es ponderado por unidades:
 
 ```
-costo_nuevo = (stock_actual × costo_actual + cantidad_entrada × costo_compra)
-              / (stock_actual + cantidad_entrada)
+(stock_actual × costo_actual + cantidad_entrada × costo_compra)
+/ (stock_actual + cantidad_entrada)
 ```
 
-Ejemplo: 10 unidades a $1.000 y una entrada de 20 a $1.300 dejan 30 unidades a $1.200. El valor total es $36.000. Una salida disminuye unidades y conserva el promedio. Una entrada con stock cero toma el nuevo costo. El precio de venta es independiente: se define y modifica en Productos. El detalle de cada documento conserva una copia del costo y del precio registrados.
+Ejemplo: 10 a $1.000 y una entrada de 20 a $1.300 dejan 30 a $1.200 y valoración de $36.000. Una salida conserva el promedio. El precio de venta se modifica en Productos, independientemente del costo. Define una misma base contable (neta o con IVA) y unidad de medida para todas las entradas. Esta base no calcula impuestos ni convierte cajas a unidades.
 
-Define siempre el costo sobre la misma base contable (por ejemplo, neto sin IVA) y la misma unidad física. Esta versión no calcula impuestos ni convierte cajas en unidades. Usa numeric en PostgreSQL para existencias y dinero; el promedio tiene seis decimales y la valoración visible dos.
+### GitHub y archivos
 
-La autorización bloquea el documento y sus productos, verifica permisos y stock, cambia existencias, registra antes/después y marca aprobado en **una transacción PostgreSQL**. Si falta stock en cualquier línea, se revierte el documento completo. Las salidas no permiten stock negativo. Las ediciones y ajustes usan `version` para detectar datos desactualizados. Las facturas se identifican además por proveedor y folio; los detalles duplicados del mismo producto se rechazan.
+Los archivos se guardan en `Facturas/` y `boletas/`, con nombre derivado de su hash para evitar colisiones. Supabase guarda enlace web, ruta y SHA de GitHub. Un enlace de un repositorio privado requiere acceso de GitHub; el botón Descargar de la app utiliza el token del servidor y no requiere una cuenta GitHub del vendedor.
 
-El historial está en Supabase, no en `st.session_state`, y persiste al cerrar sesión. Las acciones normales no permiten borrar ni editar movimientos. `service_role` sólo tiene SELECT en las tablas; sus escrituras pasan por la función. Un propietario de la base sigue teniendo poder administrativo: no es un registro legalmente inalterable. Programa respaldos según tu plan de Supabase y prueba restaurarlos.
+GitHub y Supabase no comparten transacción. Se carga primero el archivo; si falla el registro en la base puede quedar un archivo huérfano. Al reintentar se reutiliza la misma ruta por hash. No borres automáticamente archivos después de un timeout. Para grandes volúmenes conviene evaluar Supabase Storage, manteniendo GitHub para el código.
 
-## Instalación paso a paso
+## Tablas, UUID y relaciones
 
-### 1. Crear el repositorio
-
-Crea un repositorio **privado** en GitHub, inicializado con rama `main`. Copia el contenido de esta carpeta a su raíz. Las carpetas `Facturas` y `boletas` se crean cuando la API sube el primer documento. Mantén código, documentos y permisos fuera del acceso público.
-
-Crea un personal access token **fine-grained**, restringido a ese repositorio, con Contents: Read and write. Debe permitir commits a la rama elegida; una regla de protección puede impedirlos. No otorgues permisos de administración. Conserva el token fuera de Git y renueva al expirar. Las subidas crean commits; en aplicaciones de mayor tráfico será conveniente un repositorio de documentos separado o Storage.
-
-### 2. Crear Supabase
-
-Crea un proyecto nuevo. Abre SQL Editor y ejecuta `sql/001_schema.sql` una vez. El script es de instalación, no una migración reutilizable: si ya existen objetos, no lo vuelvas a ejecutar sin revisar su estado. La transacción revierte si falla.
-
-Crea el primer administrador desde SQL Editor, reemplazando el correo por la cuenta Google con la que iniciarás sesión:
-
-```sql
-insert into public.usuarios(usuario, email, rol)
-values ('Héctor', 'TU-CORREO@gmail.com', 'administrador');
-```
-
-Usa minúsculas en el correo. Los demás usuarios se crean desde la app y deben tener cuenta Google verificada. Desactivar una cuenta impide las operaciones posteriores. La aplicación no administra contraseñas de Google ni invita por correo automáticamente.
-
-Obtén la URL del proyecto y una clave **service_role** de las API keys del proyecto. Tiene privilegios elevados: jamás la pongas en código, Git, una URL, JavaScript del navegador ni un mensaje de error al usuario. La clave pública `anon` no funcionará en esta arquitectura por diseño.
-
-### 3. Configurar Google OIDC
-
-En Google Cloud configura una pantalla de consentimiento OAuth y un cliente OAuth de tipo aplicación web. Habilita los usuarios de prueba si el proyecto está en modo testing. Registra exactamente el callback local:
-
-```
-http://localhost:8501/oauth2callback
-```
-
-Para el despliegue agrega también `https://TU-APP.streamlit.app/oauth2callback` (o el dominio real). Guarda client ID y client secret en los secretos de Streamlit. La app requiere la identidad y el correo verificado; la cuenta debe estar además habilitada en `usuarios`.
-
-### 4. Configurar secretos y ejecutar
-
-En la raíz del proyecto:
-
-```bash
-python -m venv .venv
-```
-
-Activa el entorno en Windows PowerShell:
-
-```powershell
-.venv\Scripts\Activate.ps1
-```
-
-O en Linux/macOS:
-
-```bash
-source .venv/bin/activate
-```
-
-Luego:
-
-```bash
-pip install -r requirements.txt
-```
-
-Copia `.streamlit/secrets.example.toml` como `.streamlit/secrets.toml`, reemplaza todos los valores y genera un `cookie_secret` aleatorio:
-
-```bash
-python -c "import secrets; print(secrets.token_urlsafe(48))"
-```
-
-No subas `secrets.toml` a GitHub; `.gitignore` ya lo excluye. No copies comillas ni valores de ejemplo como secretos reales. Ejecuta:
-
-```bash
-streamlit run app.py
-```
-
-### 5. Desplegar Streamlit
-
-Conecta el repositorio privado en Streamlit Community Cloud u otro servidor que ejecute Python, selecciona `app.py` y configura los secretos en el panel de despliegue. Usa el callback HTTPS real tanto en Google como en `[auth].redirect_uri`. No habilites visualización pública de secretos ni logs sin protección. Para usar desde un celular, abre el dominio HTTPS de la app y autoriza la cámara. `localhost` en el celular identifica al celular, no a tu computador.
-
-La cookie de identidad de `st.login()` mantiene la sesión al recargar y puede persistir hasta 30 días según la documentación; el navegador, la configuración y el vencimiento pueden exigir iniciar sesión otra vez. No se promete persistencia ilimitada ni que borrar cookies mantenga acceso. Cerrar sesión elimina la cookie de la sesión actual; otras pestañas ya autenticadas pueden permanecer abiertas, conforme al comportamiento de Streamlit. La desactivación en `usuarios` se verifica al volver a interactuar.
-
-### 6. Primer uso
-
-1. Entra con el primer administrador y crea los usuarios de bodega y venta.
-2. Agrega proveedores.
-3. En Productos, escribe el nombre encontrado en una factura y revisa coincidencias. Selecciona el existente si corresponde. Si es otro, créalo con código de barras, tipo, precio y umbral. El código se conserva como texto para no perder ceros.
-4. Registra la factura con proveedor, folio, fecha, archivo y productos. El costo de compra va en cada línea.
-5. Guarda el documento pendiente. En Documentos revisa el detalle y autoriza. Esto incorpora stock.
-6. Para vender, registra una salida manual o una boleta y autoriza el documento correspondiente. **No registres la misma venta por ambos métodos**: este prototipo no enlaza una boleta posterior con una venta manual anterior. Eso duplicaría la rebaja.
-7. El administrador revisa Historial y validaciones; todos pueden consultar Bajo stock.
-
-No se fusionan productos automáticamente por nombre: “leche 1 L” y “leche 200 ml” pueden parecerse y son distintos. Se muestran sugerencias para que la persona confirme el producto correcto. Antes de una entrada, completa códigos faltantes desde Productos. Sólo un código principal por producto; múltiples códigos de empaque requieren una tabla adicional.
-
-## Archivos del proyecto
-
-| Archivo | Función |
+| Tabla | Contenido |
 |---|---|
-| app.py | Interfaz, identidad OIDC, navegación y servicios |
-| domain.py | Normalización y sugerencias por nombre; cálculo de referencia |
-| github_files.py | Carga y descarga privada de documentos |
-| sql/001_schema.sql | Esquema, restricciones, permisos y transacciones |
-| .streamlit/secrets.example.toml | Configuración de ejemplo sin secretos reales |
-| tests/test_domain.py | Pruebas locales de cálculo y similitud |
-| sql/002_acceptance.sql | Pruebas transaccionales para SQL Editor, con rollback |
+| usuarios | UUID, nombre para mostrar, login, contacto opcional, rol y activo |
+| credenciales | FK a usuarios, hash bcrypt y contador de intentos |
+| sesiones | Hash del token, FK a usuarios, creación y vencimiento |
+| proveedor | UUID, RUT, nombre y contacto |
+| productos | Catálogo, costo promedio, stock, precio, tipo y umbral |
+| inventario | Vista de productos con valor total calculado |
+| documentos | Facturas, boletas y salidas manuales, estado y archivo |
+| documento_detalle | Relación documento-producto, cantidad y costos/precio históricos |
+| historial | Actor, fecha, tipo, cantidad, referencias y valores antes/después |
+| validaciones | Administrador que revisó cada movimiento |
+| operaciones | Idempotencia de operaciones de inventario; sin contraseñas |
 
-## Validación antes de uso real
+El UUID se genera con `default gen_random_uuid()`. No necesitas escribirlo manualmente. Una FK como `documentos.proveedor_id references proveedor(id)` obliga a que exista ese proveedor. No se guarda su nombre como relación.
 
-Ejecuta las pruebas locales desde la raíz:
+El folio real se guarda en `numero`; el UUID es el ID técnico. Las facturas tienen número único **por proveedor**, porque dos proveedores pueden emitir la factura 123. Para boletas se supone un único negocio emisor y folio global único. `venta_dia` es un correlativo separado que empieza en 1 por fecha para salidas manuales y boletas autorizadas. Si agregas diferentes tipos DTE, amplía la clave comercial de factura.
 
-```bash
-python -m pytest -q
-```
+`inventario` es una vista, no una segunda copia del stock: siempre consulta los productos actuales. Cada navegador obtiene nuevos datos al interactuar o pulsar Recargar datos; no hay actualización push en tiempo real. El historial persiste al salir o recargar porque está en Supabase. El dueño de la base sigue teniendo acceso administrativo: no es un registro legalmente inalterable. Configura respaldos y prueba su restauración.
 
-Ejecuta `sql/002_acceptance.sql` en SQL Editor de un entorno de prueba tras instalar el esquema. Crea sus datos dentro de una transacción y al final hace ROLLBACK. Verifica costo, doble autorización, stock insuficiente y permisos de vendedor. Nunca omitas el rollback ni lo ejecutes parcialmente.
+## Pruebas y límites
 
-Prueba además con tres cuentas reales: permisos de cada menú, descarga privada, cámara en Android/iOS, recarga, cierre/reapertura, cuenta desactivada y cierre de sesión. Abre dos sesiones y autoriza simultáneamente un mismo documento: debe haber una sola entrada/salida. Prueba dos ventas que compitan por la última unidad: sólo una debe aprobarse. Simula fallo de GitHub y timeout de Supabase; revisa pendientes y archivos huérfanos antes de volver a registrar.
+Ejecuta `python -m pytest -q`. Incluye pruebas del promedio, similitud de nombres, hashing y política de claves, formulario de login, acceso con credenciales incorrectas y logout con transporte de base simulado.
 
-## Fuentes oficiales consultadas
+Los scripts SQL opcionales `002_acceptance.sql` y `004_pruebas_acceso.sql` son para un entorno de prueba: ejecútalos completos. Crean datos ficticios dentro de una transacción y terminan en ROLLBACK. El segundo comprueba bloqueo persistente, claves, sesiones, revocación y privilegios. La validación local de sintaxis no sustituye ejecutarlos en tu Supabase.
 
-- Streamlit OIDC, cookies y cierre de sesión: https://docs.streamlit.io/develop/concepts/connections/authentication
-- Supabase: funciones, SECURITY DEFINER y permisos: https://supabase.com/docs/guides/database/functions
-- GitHub REST Contents: https://docs.github.com/en/rest/repos/contents
+No se conectó a tu Supabase ni a tu GitHub para esta actualización. Las pruebas de UI utilizan un servidor simulado, no comprueban que el navegador haya escrito la cookie. Faltan comprobaciones reales de Google-free login, persistencia de cookies, cámara, permisos API, archivos, y concurrencia en el hosting final. Antes de usarlo, prueba cuentas de los tres roles, recarga, cierre de sesión, contraseña cambiada, cuenta desactivada y dos ventas que compitan por la última unidad.
 
-Las dependencias están acotadas por versión mayor, pero no constituyen un lock reproducible. Tras validar el despliegue, fija las versiones exactas probadas. No sustituyas una versión de Streamlit sin repetir las comprobaciones de cookies y login.
+La versión sigue siendo una base para configurar y validar: no incluye edición/rechazo de pendientes, OCR, devoluciones, anulaciones, emisión SII, lotes, vencimientos, múltiples bodegas, conversión de unidades ni recuperación por email. No guardes pendientes incorrectos confiando en poder editarlos después: ese flujo requiere una ampliación. Las dependencias tienen límites de versión; tras validar en tu hosting, fija las versiones exactas probadas.
+
+Fuentes de referencia: PostgreSQL pgcrypto https://www.postgresql.org/docs/current/pgcrypto.html; cookies de contexto Streamlit https://docs.streamlit.io/develop/api-reference/caching-and-state/st.context; componente de cookies https://github.com/NathanChen198/streamlit-cookies-controller; funciones Supabase https://supabase.com/docs/guides/database/functions; GitHub Contents https://docs.github.com/en/rest/repos/contents.

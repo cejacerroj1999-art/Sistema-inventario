@@ -1,0 +1,9 @@
+streamlit>=1.42,<2
+supabase>=2.15,<3
+requests>=2.32,<3
+pandas>=2.2,<3
+bcrypt>=4,<6
+streamlit-cookies-controller==0.0.4
+Pillow>=10,<13
+zxing-cpp>=2.3,<3
+pytest>=8,<10
