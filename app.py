@@ -14,6 +14,7 @@ import zxingcpp
 from domain import candidates
 from github_files import GitHubFiles
 from access import authenticate, hash_password, valid_login
+from invoice_ui import invoice_entry
 
 st.set_page_config(page_title='Inventario', page_icon='📦', layout='wide')
 st.title('Inventario')
@@ -48,8 +49,10 @@ def mutate(action, payload, slot):
     if not state or state['payload'] != payload:
         state = {'id': str(uuid4()), 'payload': copy.deepcopy(payload)}
         st.session_state[key] = state
-    result = db().rpc('operar', {'p_actor': actor['id'], 'p_operacion': state['id'],
-                                'p_accion': action, 'p_datos': payload}).execute().data
+    args = {'p_actor': actor['id'], 'p_operacion': state['id'], 'p_datos': payload}
+    if action != 'factura':
+        args['p_accion'] = action
+    result = db().rpc('registrar_factura' if action == 'factura' else 'operar', args).execute().data
     # Mantener id hasta que cambie el formulario: protege doble clic y respuesta tardía.
     st.success('Operación guardada.')
     return result
@@ -150,6 +153,9 @@ def catalog():
 def document_entry():
     available = ['factura'] if actor['rol']=='bodeguero' else ['boleta','manual'] if actor['rol']=='vendedor' else ['factura','boleta','manual']
     kind = st.selectbox('Tipo de ingreso', available)
+    if kind == 'factura':
+        invoice_entry(actor, rows, products, github, mutate, scan)
+        return
     st.caption('Guardar crea un pendiente. Autorizar en Documentos aplica el stock una sola vez.')
     number = st.text_input('Folio de factura/boleta (para manual: referencia única)')
     date = st.date_input('Fecha del documento', value=dt.datetime.now(ZoneInfo('America/Santiago')).date())
@@ -357,7 +363,7 @@ except Exception as error:
     elif 'jwt expired' in hints or 'token has expired' in hints:
         cause = 'La credencial de conexión está vencida. Actualizar la clave del servidor en Secrets.'
     elif error_code == 'PGRST202' or 'could not find the function' in hints:
-        cause = 'La API no encuentra la función de acceso. Comprobar proyecto, actualización SQL y caché de esquema.'
+        cause = 'La API no encuentra la función solicitada. Comprobar proyecto, actualización SQL y caché de esquema.'
     elif error_code == '42501' or 'permission denied' in hints:
         cause = 'Permisos insuficientes. Revisar el tipo de clave y los permisos de las funciones.'
     elif error_code == '42883':
@@ -374,7 +380,7 @@ except Exception as error:
         cause = 'La API no está disponible o agotó el tiempo de espera.'
     locations = [f'{Path(f.filename).name}:{f.lineno}'
                  for f in traceback.extract_tb(error.__traceback__)
-                 if Path(f.filename).name in {'app.py', 'access.py', 'github_files.py'}]
+                 if Path(f.filename).name in {'app.py', 'access.py', 'github_files.py', 'invoice_ui.py', 'invoice_import.py'}]
     diagnostic = '\n'.join([
         f'Referencia: {reference}', f'Tipo: {error_type}',
         f'Código: {error_code}', f'HTTP: {http_status}',
