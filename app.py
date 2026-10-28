@@ -326,8 +326,36 @@ try:
     if st.sidebar.button('Recargar datos'):
         st.rerun()
     pages[st.session_state['page']]()
-except Exception:
+except Exception as error:
+    # Mostrar sólo datos estructurales. Nunca str(error), payloads, secretos ni locales.
+    import re
+    import traceback
+    from pathlib import Path
     reference = uuid4().hex[:10]
-    logging.error('Error inventario referencia=%s; revisar conectividad y configuración',reference)
+    error_type = type(error).__name__
+    if not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]{0,79}', error_type):
+        error_type = 'Exception'
+    raw_code = getattr(error, 'code', None)
+    error_code = str(raw_code) if isinstance(raw_code, (str, int)) else ''
+    if not re.fullmatch(r'[A-Z0-9]{4,12}', error_code):
+        error_code = 'no disponible'
+    status = getattr(error, 'status_code', None)
+    if status is None:
+        status = getattr(error, 'status', None)
+    if status is None:
+        status = getattr(getattr(error, 'response', None), 'status_code', None)
+    http_status = str(status) if isinstance(status, int) and 100 <= status <= 599 else 'no disponible'
+    locations = [f'{Path(f.filename).name}:{f.lineno}'
+                 for f in traceback.extract_tb(error.__traceback__)
+                 if Path(f.filename).name in {'app.py', 'access.py', 'github_files.py'}]
+    diagnostic = '\n'.join([
+        f'Referencia: {reference}', f'Tipo: {error_type}',
+        f'Código: {error_code}', f'HTTP: {http_status}',
+        f'Streamlit: {st.__version__}',
+        'Ubicación: ' + (' → '.join(locations) or 'no disponible')
+    ])
+    logging.error('Diagnóstico inventario: %s', diagnostic)
     st.error(f'No se pudo completar la operación. Referencia: {reference}. Puedes reintentar o volver desde el menú.')
-    st.caption('Un documento pendiente no cambia existencias. Las autorizaciones fallidas revierten toda su transacción.')
+    with st.expander('Diagnóstico técnico sin credenciales', expanded=True):
+        st.code(diagnostic, language='text')
+    st.caption('El diagnóstico omite mensajes de excepción, contraseñas, tokens y claves. Un documento pendiente no cambia existencias.')
