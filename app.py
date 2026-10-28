@@ -337,21 +337,48 @@ except Exception as error:
         error_type = 'Exception'
     raw_code = getattr(error, 'code', None)
     error_code = str(raw_code) if isinstance(raw_code, (str, int)) else ''
-    if not re.fullmatch(r'[A-Z0-9]{4,12}', error_code):
+    if not re.fullmatch(r'(?:[0-9]{3}|[A-Z0-9]{4,12})', error_code):
         error_code = 'no disponible'
     status = getattr(error, 'status_code', None)
     if status is None:
         status = getattr(error, 'status', None)
     if status is None:
         status = getattr(getattr(error, 'response', None), 'status_code', None)
+    if status is None and error_code.isdigit() and 100 <= int(error_code) <= 599:
+        status = int(error_code)
     http_status = str(status) if isinstance(status, int) and 100 <= status <= 599 else 'no disponible'
+    # Sólo clasificar patrones conocidos: nunca mostrar el mensaje original.
+    hints = ' '.join(value[:16000].lower() for value in
+                     (getattr(error, 'message', None), getattr(error, 'details', None))
+                     if isinstance(value, str))
+    cause = 'Sin clasificar; se necesita comprobar la respuesta de Supabase.'
+    if 'invalid api key' in hints or 'no api key found' in hints:
+        cause = 'Supabase rechazó la API key. Revisar SUPABASE_SERVICE_KEY y que corresponda a SUPABASE_URL.'
+    elif 'jwt expired' in hints or 'token has expired' in hints:
+        cause = 'La credencial de conexión está vencida. Actualizar la clave del servidor en Secrets.'
+    elif error_code == 'PGRST202' or 'could not find the function' in hints:
+        cause = 'La API no encuentra la función de acceso. Comprobar proyecto, actualización SQL y caché de esquema.'
+    elif error_code == '42501' or 'permission denied' in hints:
+        cause = 'Permisos insuficientes. Revisar el tipo de clave y los permisos de las funciones.'
+    elif error_code == '42883':
+        cause = 'PostgreSQL no encuentra una función requerida; revisar las funciones SQL y pgcrypto.'
+    elif 'invalid salt' in hints or 'invalid password hash' in hints:
+        cause = 'El hash de contraseña tiene un formato que PostgreSQL no acepta.'
+    elif 'invalid jwt' in hints or 'jwt could not be decoded' in hints or 'jwt malformed' in hints:
+        cause = 'La credencial JWT del servidor no es válida o no corresponde a este proyecto.'
+    elif http_status == '401':
+        cause = 'La API rechazó la autenticación del servidor. Revisar la clave y el proyecto.'
+    elif http_status == '403':
+        cause = 'La API denegó el acceso del servidor. Revisar permisos y restricciones del proyecto.'
+    elif http_status in ('502', '503', '504'):
+        cause = 'La API no está disponible o agotó el tiempo de espera.'
     locations = [f'{Path(f.filename).name}:{f.lineno}'
                  for f in traceback.extract_tb(error.__traceback__)
                  if Path(f.filename).name in {'app.py', 'access.py', 'github_files.py'}]
     diagnostic = '\n'.join([
         f'Referencia: {reference}', f'Tipo: {error_type}',
         f'Código: {error_code}', f'HTTP: {http_status}',
-        f'Streamlit: {st.__version__}',
+        f'Streamlit: {st.__version__}', f'Causa detectada: {cause}',
         'Ubicación: ' + (' → '.join(locations) or 'no disponible')
     ])
     logging.error('Diagnóstico inventario: %s', diagnostic)
