@@ -266,37 +266,102 @@ def _ocr(image):
         raise ValueError('No fue posible ejecutar OCR. Verifica packages.txt y la instalación de tesseract-ocr-spa en Streamlit.') from exc
 
 
+
 def read_invoice(data, filename):
-    if len(data)>15*1024*1024:
+    """
+    Lee la primera página de una factura PDF.
+    Conserva soporte para XML DTE e imágenes.
+    """
+
+    if len(data) > 15 * 1024 * 1024:
         raise ValueError('El archivo supera 15 MB')
+
+    # XML DTE
     if filename.lower().endswith('.xml'):
         return read_xml(data)
-    texts=[]; lines=[]
+
+    texts = []
+    lines = []
+
+    # PDF
     if data.startswith(b'%PDF-'):
         import pdfplumber
+
         with pdfplumber.open(BytesIO(data)) as pdf:
-            if len(pdf.pages)>10:
-                raise ValueError('Máximo 10 páginas por factura')
-            for page in pdf.pages:
-                text=page.extract_text() or ''
-                if len(text.strip())<30:
-                    if page.width*page.height*(150/72)**2>30_000_000:
-                        raise ValueError('Una página del PDF es demasiado grande para OCR')
-                    text=_ocr(page.to_image(resolution=150).original)
-                texts.append(text)
-                found=[]
-                for table in page.extract_tables(): found.extend(table_lines(table))
-                lines.extend(found or text_lines(text))
+
+            if not pdf.pages:
+                raise ValueError(
+                    'El PDF no contiene páginas'
+                )
+
+            # Procesar exclusivamente la primera página
+            page = pdf.pages[0]
+
+            text = page.extract_text() or ''
+
+            # OCR si no hay texto suficiente
+            if len(text.strip()) < 30:
+
+                pixels = (
+                    page.width * page.height
+                    * (150 / 72) ** 2
+                )
+
+                if pixels > 30_000_000:
+                    raise ValueError(
+                        'La página es demasiado grande para OCR'
+                    )
+
+                text = _ocr(
+                    page.to_image(resolution=150).original
+                )
+
+            texts.append(text)
+
+            # Intentar obtener productos desde tablas
+            found = []
+
+            for table in page.extract_tables():
+                found.extend(table_lines(table))
+
+            # Usar extracción de texto como alternativa
+            lines = found or text_lines(text)
+
+    # IMÁGENES
     else:
-        from PIL import Image,ImageOps
+        from PIL import Image, ImageOps
+
         with Image.open(BytesIO(data)) as original:
-            if original.width*original.height>30_000_000:
-                raise ValueError('La imagen supera 30 megapíxeles')
-            image=ImageOps.exif_transpose(original).convert('RGB')
-            texts.append(_ocr(image))
-        lines=text_lines(texts[0])
-    result=metadata('\n'.join(texts));result.lines=lines
-    result.warnings.append('Lectura automática: confirma emisor, folio, fecha, cantidades y costos. El OCR puede omitir o confundir líneas.')
+
+            if original.width * original.height > 30_000_000:
+                raise ValueError(
+                    'La imagen supera 30 megapíxeles'
+                )
+
+            image = ImageOps.exif_transpose(
+                original
+            ).convert('RGB')
+
+            text = _ocr(image)
+            texts.append(text)
+
+            lines = text_lines(text)
+
+    # Extraer metadatos
+    result = metadata('\n'.join(texts))
+
+    result.lines = lines
+
+    result.warnings.append(
+        'Se procesó únicamente la primera página '
+        'del PDF. Verifica los datos antes de guardar.'
+    )
+
+    # Permitir completar manualmente los productos
     if not lines:
-        raise ValueError('No se identificó una tabla de productos compatible. Prueba el XML DTE o un PDF más claro. Necesitamos una factura de ejemplo para adaptar este formato; no se inventarán productos.')
+        result.warnings.append(
+            'No se reconocieron automáticamente los productos. '
+            'Debes ingresarlos manualmente antes de guardar.'
+        )
+
     return result
