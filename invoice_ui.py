@@ -90,9 +90,27 @@ def invoice_entry(actor, rows, products, github, mutate, scan):
             try:
                 with st.spinner('Leyendo la factura…'):
                     st.session_state[scope+':imported']=read_invoice(uploaded.getvalue(),uploaded.name)
+            
             except Exception as exc:
-                # Sólo ValueError del lector contiene mensajes controlados. No mostrar XML, OCR o rutas internos.
-                st.error(str(exc) if isinstance(exc,ValueError) else 'No se pudo leer el archivo. Prueba un XML DTE o un PDF/imagen más claro.')
+                if isinstance(exc, ValueError):
+                    st.error(str(exc))
+                else:
+                    st.error(
+                        "Error técnico durante la lectura del PDF. "
+                        f"Tipo de error: {type(exc).__name__}"
+                    )
+                    st.warning(
+                        "Revisa los registros de Streamlit para "
+                        "identificar la línea que produjo el error."
+                    )
+                    import logging
+                    logging.exception(
+                        "Error técnico al procesar la factura PDF"
+                    )
+
+        #   except Exception as exc:
+          #      # Sólo ValueError del lector contiene mensajes controlados. No mostrar XML, OCR o rutas internos.
+           #     st.error(str(exc) if isinstance(exc,ValueError) else 'No se pudo leer el archivo. Prueba un XML DTE o un PDF/imagen más claro.')
         imported=st.session_state.get(scope+':imported')
         if imported is None: return
         for warning in imported.warnings: st.warning(warning)
