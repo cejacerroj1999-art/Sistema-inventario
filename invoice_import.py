@@ -80,22 +80,52 @@ def read_xml(data):
     return result
 
 
-def metadata(text):
-    result=Invoice()
-    normalized=norm(text)
-    number=re.search(r'(?:folio|n[°ºo.]\s*[:.]?)\s*([0-9]+)',normalized)
-    if number: result.number=number.group(1)
-    date=re.search(r'(?:fecha(?:\s+de)?(?:\s+emision)?\s*[:.]?\s*)(\d{4}-\d{2}-\d{2}|\d{1,2}[/-]\d{1,2}[/-]\d{4})',normalized)
-    if date:
-        value=date.group(1)
-        if re.fullmatch(r'\d{4}-\d{2}-\d{2}',value): result.date=value
-        else:
-            day,month,year=re.split('[/-]',value)
-            result.date=f'{year}-{int(month):02}-{int(day):02}'
-    rut=re.search(r'\b\d{1,2}[.]?\d{3}[.]?\d{3}\s*-\s*[0-9kK]\b',text)
-    if rut: result.provider_rut=rut.group(0)
-    return result
 
+def metadata(text):
+    result = Invoice()
+    normalized = norm(text)
+
+    # Número o folio de factura
+    number = re.search(
+        r'(?:folio|factura(?:\s+electronica)?'
+        r'(?:\s+n[°ºo.]?)?|n[°ºo.]?)'
+        r'\s*[:#.-]?\s*(\d+)',
+        normalized
+    )
+
+    if number:
+        result.number = number.group(1)
+
+    # Fecha de emisión
+    date = re.search(
+        r'(?:fecha(?:\s+de)?(?:\s+emision)?)'
+        r'\s*[:.]?\s*'
+        r'(\d{4}-\d{2}-\d{2}|'
+        r'\d{1,2}[/-]\d{1,2}[/-]\d{4})',
+        normalized
+    )
+
+    if date:
+        value = date.group(1)
+
+        if re.fullmatch(r'\d{4}-\d{2}-\d{2}', value):
+            result.date = value
+        else:
+            day, month, year = re.split('[/-]', value)
+            result.date = (
+                f'{year}-{int(month):02}-{int(day):02}'
+            )
+
+    # RUT del proveedor
+    rut = re.search(
+        r'\b\d{1,2}[.]?\d{3}[.]?\d{3}\s*-\s*[0-9kK]\b',
+        text
+    )
+
+    if rut:
+        result.provider_rut = rut.group(0)
+
+    return result
 
 def table_lines(table):
     """Exigir encabezados identificables: no tomar subtotales como productos."""
