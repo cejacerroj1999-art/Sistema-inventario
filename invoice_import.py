@@ -97,34 +97,96 @@ def metadata(text):
     return result
 
 
+
 def table_lines(table):
-    """Exigir encabezados identificables: no tomar subtotales como productos."""
-    header=None; output=[]
+    """Extrae productos de tablas con encabezados reconocibles."""
+    header = None
+    output = []
+
     for raw in table:
-        cells=[str(x or '').replace('\n',' ').strip() for x in raw]
-        labels=[norm(x) for x in cells]
+        cells = [
+            str(x or '').replace('\n', ' ').strip()
+            for x in raw
+        ]
+        labels = [norm(x).strip() for x in cells]
+
         if header is None:
-            indexes={}
-            for i,label in enumerate(labels):
-                if 'descripcion' in label or 'producto' in label or 'detalle'==label: indexes['name']=i
-                elif 'cantidad' in label or label in ('cant.','cant','qty'): indexes['qty']=i
-                elif 'total' in label or 'monto' in label: indexes['amount']=i
-                elif ('precio' in label or 'valor' in label or 'costo' in label) and ('unit' in label or label in ('precio','valor','costo')): indexes['cost']=i
-                elif 'barras' in label or label in ('ean','gtin'): indexes['barcode']=i
-            if {'name','qty'}<=indexes.keys() and ('cost' in indexes or 'amount' in indexes): header=indexes
+            indexes = {}
+
+            for i, label in enumerate(labels):
+                if (
+                    'descripcion' in label
+                    or label in ('producto', 'detalle', 'articulo')
+                ):
+                    indexes['name'] = i
+
+                elif 'cantidad' in label or label in (
+                    'cant', 'cant.', 'qty'
+                ):
+                    indexes['qty'] = i
+
+                elif label in ('subtotal', 'importe', 'monto', 'total'):
+                    indexes['amount'] = i
+
+                elif (
+                    'unitario' in label
+                    or 'precio' in label
+                    or 'costo' in label
+                    or 'valor unit' in label
+                ):
+                    indexes['cost'] = i
+
+                elif 'barras' in label or label in (
+                    'ean', 'ean13', 'gtin'
+                ):
+                    indexes['barcode'] = i
+
+            if (
+                {'name', 'qty'} <= indexes.keys()
+                and ('cost' in indexes or 'amount' in indexes)
+            ):
+                header = indexes
+
             continue
+
         try:
-            name=cells[header['name']]
-            if not name or norm(name).startswith(('subtotal','total','iva','neto','descuento')): continue
-            qty=money(cells[header['qty']])
-            if qty<=0: continue
-            amount=cells[header['amount']] if 'amount' in header else ''
-            cost=money(amount)/qty if amount else money(cells[header['cost']])
-            barcode=cells[header['barcode']] if 'barcode' in header else ''
-            output.append(dict(nombre=name,cantidad=float(qty),costo_unitario=float(cost),codigo_de_barras=barcode))
-        except (ValueError,IndexError):
+            name = cells[header['name']]
+
+            if not name or norm(name).startswith((
+                'subtotal', 'total', 'iva',
+                'neto', 'descuento'
+            )):
+                continue
+
+            qty = money(cells[header['qty']])
+            if qty <= 0:
+                continue
+
+            # Priorizar el precio unitario explícito.
+            if 'cost' in header and cells[header['cost']]:
+                cost = money(cells[header['cost']])
+            elif 'amount' in header:
+                cost = money(cells[header['amount']]) / qty
+            else:
+                continue
+
+            barcode = (
+                cells[header['barcode']]
+                if 'barcode' in header else ''
+            )
+
+            output.append({
+                'nombre': name,
+                'cantidad': float(qty),
+                'costo_unitario': float(cost),
+                'codigo_de_barras': barcode
+            })
+
+        except (ValueError, IndexError, KeyError):
             continue
+
     return output
+
 
 
 def text_lines(text):
