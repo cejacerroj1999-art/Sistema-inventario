@@ -339,7 +339,22 @@ def read_invoice(data, filename):
             f"{d['productos_texto']} productos desde texto"
             for d in diagnostico
         )
-    
+        
+        # Solo para revisión local: no imprime contenido
+        for numero_tabla, tabla in enumerate(tables, start=1):
+            if tabla:
+                st.write(
+                    f"Página {page.page_number} - "
+                    f"Tabla {numero_tabla}"
+                )
+                st.write(
+                    f"Cantidad de filas: {len(tabla)}"
+                )
+                st.write(
+                    f"Columnas de la primera fila: "
+                    f"{len(tabla[0]) if tabla[0] else 0}"
+                )
+
         raise ValueError(
             "No se identificó una tabla de productos compatible. "
             "Diagnóstico: " + (resumen or "sin datos")
