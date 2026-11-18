@@ -1,11 +1,10 @@
-"""Lectura local de DTE XML, PDF con texto/tablas y OCR de imágenes. Sin API externa."""
+""Lectura local de DTE XML, PDF con texto/tablas y OCR de imágenes. Sin API externa."""
 from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
 from io import BytesIO
 import re
 import unicodedata
 from defusedxml import ElementTree
-import streamlit as st
 
 
 @dataclass
@@ -98,96 +97,34 @@ def metadata(text):
     return result
 
 
-
 def table_lines(table):
-    """Extrae productos de tablas con encabezados reconocibles."""
-    header = None
-    output = []
-
+    """Exigir encabezados identificables: no tomar subtotales como productos."""
+    header=None; output=[]
     for raw in table:
-        cells = [
-            str(x or '').replace('\n', ' ').strip()
-            for x in raw
-        ]
-        labels = [norm(x).strip() for x in cells]
-
+        cells=[str(x or '').replace('\n',' ').strip() for x in raw]
+        labels=[norm(x) for x in cells]
         if header is None:
-            indexes = {}
-
-            for i, label in enumerate(labels):
-                if (
-                    'descripcion' in label
-                    or label in ('producto', 'detalle', 'articulo')
-                ):
-                    indexes['name'] = i
-
-                elif 'cantidad' in label or label in (
-                    'cant', 'cant.', 'qty'
-                ):
-                    indexes['qty'] = i
-
-                elif label in ('subtotal', 'importe', 'monto', 'total'):
-                    indexes['amount'] = i
-
-                elif (
-                    'unitario' in label
-                    or 'precio' in label
-                    or 'costo' in label
-                    or 'valor unit' in label
-                ):
-                    indexes['cost'] = i
-
-                elif 'barras' in label or label in (
-                    'ean', 'ean13', 'gtin'
-                ):
-                    indexes['barcode'] = i
-
-            if (
-                {'name', 'qty'} <= indexes.keys()
-                and ('cost' in indexes or 'amount' in indexes)
-            ):
-                header = indexes
-
+            indexes={}
+            for i,label in enumerate(labels):
+                if 'descripcion' in label or 'producto' in label or 'detalle'==label: indexes['name']=i
+                elif 'cantidad' in label or label in ('cant.','cant','qty'): indexes['qty']=i
+                elif 'total' in label or 'monto' in label: indexes['amount']=i
+                elif ('precio' in label or 'valor' in label or 'costo' in label) and ('unit' in label or label in ('precio','valor','costo')): indexes['cost']=i
+                elif 'barras' in label or label in ('ean','gtin'): indexes['barcode']=i
+            if {'name','qty'}<=indexes.keys() and ('cost' in indexes or 'amount' in indexes): header=indexes
             continue
-
         try:
-            name = cells[header['name']]
-
-            if not name or norm(name).startswith((
-                'subtotal', 'total', 'iva',
-                'neto', 'descuento'
-            )):
-                continue
-
-            qty = money(cells[header['qty']])
-            if qty <= 0:
-                continue
-
-            # Priorizar el precio unitario explícito.
-            if 'cost' in header and cells[header['cost']]:
-                cost = money(cells[header['cost']])
-            elif 'amount' in header:
-                cost = money(cells[header['amount']]) / qty
-            else:
-                continue
-
-            barcode = (
-                cells[header['barcode']]
-                if 'barcode' in header else ''
-            )
-
-            output.append({
-                'nombre': name,
-                'cantidad': float(qty),
-                'costo_unitario': float(cost),
-                'codigo_de_barras': barcode
-            })
-
-        except (ValueError, IndexError, KeyError):
+            name=cells[header['name']]
+            if not name or norm(name).startswith(('subtotal','total','iva','neto','descuento')): continue
+            qty=money(cells[header['qty']])
+            if qty<=0: continue
+            amount=cells[header['amount']] if 'amount' in header else ''
+            cost=money(amount)/qty if amount else money(cells[header['cost']])
+            barcode=cells[header['barcode']] if 'barcode' in header else ''
+            output.append(dict(nombre=name,cantidad=float(qty),costo_unitario=float(cost),codigo_de_barras=barcode))
+        except (ValueError,IndexError):
             continue
-
     return output
-
 
 
 def text_lines(text):
@@ -230,155 +167,22 @@ def read_invoice(data, filename):
         raise ValueError('El archivo supera 15 MB')
     if filename.lower().endswith('.xml'):
         return read_xml(data)
-    texts = []
-    lines = []
-    diagnostico = []
+    texts=[]; lines=[]
     if data.startswith(b'%PDF-'):
         import pdfplumber
         with pdfplumber.open(BytesIO(data)) as pdf:
             if len(pdf.pages)>10:
                 raise ValueError('Máximo 10 páginas por factura')
-            seen_pages = set()
-            
             for page in pdf.pages:
-                text = page.extract_text() or ''
-            
-                if len(text.strip()) < 30:
-                    if page.width * page.height * (150/72)**2 > 30_000_000:
-                        raise ValueError(
-                            'Una página del PDF es demasiado grande para OCR'
-                        )
-                    text = _ocr(page.to_image(resolution=150).original)
-            
-                # Detectar páginas con texto idéntico
-                page_signature = ' '.join(norm(text).split())
-            
-                if page_signature and page_signature in seen_pages:
-                    continue
-            
-                if page_signature:
-                    seen_pages.add(page_signature)
+                text=page.extract_text() or ''
+                if len(text.strip())<30:
+                    if page.width*page.height*(150/72)**2>30_000_000:
+                        raise ValueError('Una página del PDF es demasiado grande para OCR')
+                    text=_ocr(page.to_image(resolution=150).original)
                 texts.append(text)
-
-                found = []
-                tables = page.extract_tables()
-                
-                # Solo para revisión local: no imprime contenido
-                for numero_tabla, tabla in enumerate(tables, start=1):
-                    if tabla:
-                        st.write(
-                            f"Página {page.page_number} - "
-                            f"Tabla {numero_tabla}"
-                        )
-                        st.write(
-                            f"Cantidad de filas: {len(tabla)}"
-                        )
-                        st.write(
-                            f"Columnas de la primera fila: "
-                            f"{len(tabla[0]) if tabla[0] else 0}"
-                        )
-                        
-                
-                
-                # Diagnóstico seguro de la estructura de las tablas
-                etiquetas = (
-                    'codigo', 'descripcion', 'cantidad',
-                    'cant', 'unid', 'unitario',
-                    'precio', 'descuento', 'subtotal',
-                    'total', 'producto', 'detalle',
-                    'valor', 'monto'
-                )
-                
-                for numero_tabla, tabla in enumerate(tables, start=1):
-                    st.write(
-                        f"Página {page.page_number} - "
-                        f"Tabla {numero_tabla}"
-                    )
-                
-                    for numero_fila, fila in enumerate(tabla, start=1):
-                        resultado = []
-                
-                        for celda in fila:
-                            valor = norm(str(celda or '')).strip()
-                
-                            coincidencias = [
-                                etiqueta
-                                for etiqueta in etiquetas
-                                if etiqueta in valor
-                            ]
-                
-                            if coincidencias:
-                                resultado.append(
-                                    '/'.join(coincidencias)
-                                )
-                            elif not valor:
-                                resultado.append('[vacío]')
-                            else:
-                                resultado.append('[otro]')
-                
-                        st.write(
-                            f"Fila {numero_fila}: {resultado}"
-                        )
-
-#Echar ojo desde esta linea en adelante
-                # Diagnóstico estructural sin mostrar contenido
-                for numero_tabla, tabla in enumerate(tables, start=1):
-                    cantidad_filas = len(tabla)
-                    columnas_por_fila = [
-                        len(fila) if fila else 0
-                        for fila in tabla
-                    ]
-                
-                    print(
-                        f"[ESTRUCTURA PDF] "
-                        f"Pagina {page.page_number} | "
-                        f"Tabla {numero_tabla} | "
-                        f"Filas: {cantidad_filas} | "
-                        f"Columnas por fila: {columnas_por_fila}"
-                    )
-
-                print(
-                    f"[DIAGNOSTICO PDF] "
-                    f"Pagina: {len(texts)} | "
-                    f"Caracteres extraidos: {len(text)} | "
-                    f"Tablas detectadas: {len(tables)}"
-                )
-                
-                for table in tables:
-                    found.extend(table_lines(table))
-                
-                print(
-                    f"[DIAGNOSTICO PDF] "
-                    f"Productos desde tablas: {len(found)}"
-                )
-                
-                fallback = text_lines(text) if not found else []
-                
-                print(
-                    f"[DIAGNOSTICO PDF] "
-                    f"Productos desde texto: {len(fallback)}"
-                )
-                
-                lines.extend(found or fallback)
-                diagnostico.append({
-                    "pagina": len(texts),
-                    "caracteres": len(text),
-                    "tablas": len(tables),
-                    "productos_tabla": len(found),
-                    "productos_texto": len(fallback)
-                })
-                # Guardar el texto de la página
-#                texts.append(text)
-            
-                # Extraer los productos
- #               found = []
-  #              for table in page.extract_tables():
-   #                 found.extend(table_lines(table))
-            
-    #            lines.extend(found or text_lines(text))
-                
-
-            
+                found=[]
+                for table in page.extract_tables(): found.extend(table_lines(table))
+                lines.extend(found or text_lines(text))
     else:
         from PIL import Image,ImageOps
         with Image.open(BytesIO(data)) as original:
@@ -390,19 +194,5 @@ def read_invoice(data, filename):
     result=metadata('\n'.join(texts));result.lines=lines
     result.warnings.append('Lectura automática: confirma emisor, folio, fecha, cantidades y costos. El OCR puede omitir o confundir líneas.')
     if not lines:
-        resumen = "; ".join(
-            f"Página {d['pagina']}: "
-            f"{d['caracteres']} caracteres, "
-            f"{d['tablas']} tablas, "
-            f"{d['productos_tabla']} productos desde tablas, "
-            f"{d['productos_texto']} productos desde texto"
-            for d in diagnostico
-        )
-    
-        raise ValueError(
-            "No se identificó una tabla de productos compatible. "
-            "Diagnóstico: " + (resumen or "sin datos")
-        )
-#    if not lines:
- #       raise ValueError('No se identificó una tabla de productos compatible. Prueba el XML DTE o un PDF más claro. Necesitamos una factura de ejemplo para adaptar este formato; no se inventarán productos.')
-  #  return result
+        raise ValueError('No se identificó una tabla de productos compatible. Prueba el XML DTE o un PDF más claro. Necesitamos una factura de ejemplo para adaptar este formato; no se inventarán productos.')
+    return result
