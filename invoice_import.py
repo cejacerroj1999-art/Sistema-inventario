@@ -235,16 +235,38 @@ def read_invoice(data, filename):
         with pdfplumber.open(BytesIO(data)) as pdf:
             if len(pdf.pages)>10:
                 raise ValueError('Máximo 10 páginas por factura')
+            seen_pages = set()
+            
             for page in pdf.pages:
-                text=page.extract_text() or ''
-                if len(text.strip())<30:
-                    if page.width*page.height*(150/72)**2>30_000_000:
-                        raise ValueError('Una página del PDF es demasiado grande para OCR')
-                    text=_ocr(page.to_image(resolution=150).original)
+                text = page.extract_text() or ''
+            
+                if len(text.strip()) < 30:
+                    if page.width * page.height * (150/72)**2 > 30_000_000:
+                        raise ValueError(
+                            'Una página del PDF es demasiado grande para OCR'
+                        )
+                    text = _ocr(page.to_image(resolution=150).original)
+            
+                # Detectar páginas con texto idéntico
+                page_signature = ' '.join(norm(text).split())
+            
+                if page_signature and page_signature in seen_pages:
+                    continue
+            
+                if page_signature:
+                    seen_pages.add(page_signature)
+            
+                # Guardar el texto de la página
                 texts.append(text)
-                found=[]
-                for table in page.extract_tables(): found.extend(table_lines(table))
+            
+                # Extraer los productos
+                found = []
+                for table in page.extract_tables():
+                    found.extend(table_lines(table))
+            
                 lines.extend(found or text_lines(text))
+
+            
     else:
         from PIL import Image,ImageOps
         with Image.open(BytesIO(data)) as original:
