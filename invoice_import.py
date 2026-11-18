@@ -255,16 +255,44 @@ def read_invoice(data, filename):
             
                 if page_signature:
                     seen_pages.add(page_signature)
-            
-                # Guardar el texto de la página
                 texts.append(text)
+
+                found = []
+                tables = page.extract_tables()
+                
+                print(
+                    f"[DIAGNOSTICO PDF] "
+                    f"Pagina: {len(texts)} | "
+                    f"Caracteres extraidos: {len(text)} | "
+                    f"Tablas detectadas: {len(tables)}"
+                )
+                
+                for table in tables:
+                    found.extend(table_lines(table))
+                
+                print(
+                    f"[DIAGNOSTICO PDF] "
+                    f"Productos desde tablas: {len(found)}"
+                )
+                
+                fallback = text_lines(text) if not found else []
+                
+                print(
+                    f"[DIAGNOSTICO PDF] "
+                    f"Productos desde texto: {len(fallback)}"
+                )
+                
+                lines.extend(found or fallback)
+                # Guardar el texto de la página
+#                texts.append(text)
             
                 # Extraer los productos
-                found = []
-                for table in page.extract_tables():
-                    found.extend(table_lines(table))
+ #               found = []
+  #              for table in page.extract_tables():
+   #                 found.extend(table_lines(table))
             
-                lines.extend(found or text_lines(text))
+    #            lines.extend(found or text_lines(text))
+                
 
             
     else:
