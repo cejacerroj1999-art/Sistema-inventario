@@ -279,36 +279,47 @@ def read_invoice(data, filename):
                         )
                         
                 
-                # Diagnóstico de encabezados, sin mostrar datos de productos
+                
+                # Diagnóstico seguro de la estructura de las tablas
+                etiquetas = (
+                    'codigo', 'descripcion', 'cantidad',
+                    'cant', 'unid', 'unitario',
+                    'precio', 'descuento', 'subtotal',
+                    'total', 'producto', 'detalle',
+                    'valor', 'monto'
+                )
+                
                 for numero_tabla, tabla in enumerate(tables, start=1):
-                    if numero_tabla == 1 and tabla:
-                        st.write(
-                            f"Página {page.page_number} - "
-                            "Encabezados de la tabla 1"
-                        )
+                    st.write(
+                        f"Página {page.page_number} - "
+                        f"Tabla {numero_tabla}"
+                    )
                 
-                        for numero_fila, fila in enumerate(tabla[:2], start=1):
-                            encabezados = []
+                    for numero_fila, fila in enumerate(tabla, start=1):
+                        resultado = []
                 
-                            for celda in fila:
-                                valor = norm(str(celda or '')).strip()
+                        for celda in fila:
+                            valor = norm(str(celda or '')).strip()
                 
-                                # Mostrar solo etiquetas conocidas
-                                etiquetas = (
-                                    'codigo', 'descripcion', 'cantidad',
-                                    'cant', 'unid', 'unitario',
-                                    'precio', 'descuento', 'subtotal',
-                                    'total', 'producto', 'detalle'
+                            coincidencias = [
+                                etiqueta
+                                for etiqueta in etiquetas
+                                if etiqueta in valor
+                            ]
+                
+                            if coincidencias:
+                                resultado.append(
+                                    '/'.join(coincidencias)
                                 )
+                            elif not valor:
+                                resultado.append('[vacío]')
+                            else:
+                                resultado.append('[otro]')
                 
-                                if valor in etiquetas:
-                                    encabezados.append(valor)
-                                else:
-                                    encabezados.append('[otro]')
-                
-                            st.write(
-                                f"Fila {numero_fila}: {encabezados}"
-                            )
+                        st.write(
+                            f"Fila {numero_fila}: {resultado}"
+                        )
+
 #Echar ojo desde esta linea en adelante
                 # Diagnóstico estructural sin mostrar contenido
                 for numero_tabla, tabla in enumerate(tables, start=1):
