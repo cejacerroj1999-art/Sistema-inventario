@@ -277,7 +277,39 @@ def read_invoice(data, filename):
                             f"Columnas de la primera fila: "
                             f"{len(tabla[0]) if tabla[0] else 0}"
                         )
-
+                        
+                
+                # Diagnóstico de encabezados, sin mostrar datos de productos
+                for numero_tabla, tabla in enumerate(tables, start=1):
+                    if numero_tabla == 1 and tabla:
+                        st.write(
+                            f"Página {page.page_number} - "
+                            "Encabezados de la tabla 1"
+                        )
+                
+                        for numero_fila, fila in enumerate(tabla[:2], start=1):
+                            encabezados = []
+                
+                            for celda in fila:
+                                valor = norm(str(celda or '')).strip()
+                
+                                # Mostrar solo etiquetas conocidas
+                                etiquetas = (
+                                    'codigo', 'descripcion', 'cantidad',
+                                    'cant', 'unid', 'unitario',
+                                    'precio', 'descuento', 'subtotal',
+                                    'total', 'producto', 'detalle'
+                                )
+                
+                                if valor in etiquetas:
+                                    encabezados.append(valor)
+                                else:
+                                    encabezados.append('[otro]')
+                
+                            st.write(
+                                f"Fila {numero_fila}: {encabezados}"
+                            )
+#Echar ojo desde esta linea en adelante
                 # Diagnóstico estructural sin mostrar contenido
                 for numero_tabla, tabla in enumerate(tables, start=1):
                     cantidad_filas = len(tabla)
