@@ -1,4 +1,4 @@
-""Lectura local de DTE XML, PDF con texto/tablas y OCR de imágenes. Sin API externa."""
+"""Lectura local de DTE XML, PDF con texto/tablas y OCR de imágenes. Sin API externa."""
 from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
 from io import BytesIO
