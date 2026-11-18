@@ -258,6 +258,132 @@ def text_lines(text):
     return output
 
 
+def pdf_product_lines(page):
+    """
+    Extrae productos utilizando las posiciones
+    de las palabras de la primera página.
+    """
+    words = page.extract_words(
+        x_tolerance=2,
+        y_tolerance=3,
+        keep_blank_chars=False
+    )
+
+    if not words:
+        return []
+
+    # Agrupar palabras por su posición vertical
+    rows = []
+
+    for word in sorted(words, key=lambda w: (w['top'], w['x0'])):
+        matched = None
+
+        for row in rows:
+            if abs(row['top'] - word['top']) <= 3:
+                matched = row
+                break
+
+        if matched is None:
+            matched = {'top': word['top'], 'words': []}
+            rows.append(matched)
+
+        matched['words'].append(word)
+
+    rows.sort(key=lambda r: r['top'])
+
+    # Buscar encabezados de productos
+    header = None
+
+    for i, row in enumerate(rows):
+        labels = [norm(w['text']) for w in row['words']]
+
+        if (
+            any('descripcion' in x for x in labels)
+            and any('cantidad' in x or x == 'cant' for x in labels)
+            and any('unitario' in x or 'precio' in x for x in labels)
+        ):
+            header = i
+            break
+
+    if header is None:
+        return []
+
+    # Identificar posiciones horizontales de columnas
+    header_words = rows[header]['words']
+
+    columns = {}
+
+    for word in header_words:
+        label = norm(word['text'])
+
+        if 'descripcion' in label:
+            columns['name'] = word['x0']
+        elif 'cantidad' in label or label == 'cant':
+            columns['qty'] = word['x0']
+        elif 'unitario' in label or 'precio' in label:
+            columns['cost'] = word['x0']
+        elif 'subtotal' in label or label == 'total':
+            columns['amount'] = word['x0']
+
+    if not all(k in columns for k in ('name', 'qty', 'cost')):
+        return []
+
+    output = []
+
+    # Procesar líneas debajo del encabezado
+    for row in rows[header + 1:]:
+        text = ' '.join(w['text'] for w in row['words'])
+
+        if norm(text).startswith((
+            'subtotal', 'total neto',
+            'iva', 'monto total',
+            'observaciones'
+        )):
+            break
+
+        cells = {
+            'name': [],
+            'qty': [],
+            'cost': [],
+            'amount': []
+        }
+
+        for word in row['words']:
+            x = word['x0']
+
+            nearest = min(
+                columns,
+                key=lambda key: abs(x - columns[key])
+            )
+
+            cells[nearest].append(word['text'])
+
+        name = ' '.join(cells['name']).strip()
+        qty_text = ' '.join(cells['qty']).strip()
+        cost_text = ' '.join(cells['cost']).strip()
+
+        if not name or not qty_text or not cost_text:
+            continue
+
+        try:
+            qty = money(qty_text)
+            cost = money(cost_text)
+
+            if qty <= 0:
+                continue
+
+            output.append({
+                'nombre': name,
+                'cantidad': float(qty),
+                'costo_unitario': float(cost),
+                'codigo_de_barras': ''
+            })
+
+        except ValueError:
+            continue
+
+    return output
+
 def _ocr(image):
     import pytesseract
     try:
@@ -317,15 +443,25 @@ def read_invoice(data, filename):
                 )
 
             texts.append(text)
-
+            # Primero intentar extraer productos por posiciones
+            lines = pdf_product_lines(page)
+            
+            # Si falla, intentar las tablas tradicionales
+            if not lines:
+                for table in page.extract_tables():
+                    lines.extend(table_lines(table))
+            
+            # Último intento: lectura del texto
+            if not lines:
+                lines = text_lines(text)
             # Intentar obtener productos desde tablas
-            found = []
+#            found = []
 
-            for table in page.extract_tables():
-                found.extend(table_lines(table))
+ #           for table in page.extract_tables():
+  #              found.extend(table_lines(table))
 
             # Usar extracción de texto como alternativa
-            lines = found or text_lines(text)
+   #         lines = found or text_lines(text)
 
     # IMÁGENES
     else:
