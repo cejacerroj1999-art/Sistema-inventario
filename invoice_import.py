@@ -262,6 +262,22 @@ def read_invoice(data, filename):
                 found = []
                 tables = page.extract_tables()
                 
+                # Diagnóstico estructural sin mostrar contenido
+                for numero_tabla, tabla in enumerate(tables, start=1):
+                    cantidad_filas = len(tabla)
+                    columnas_por_fila = [
+                        len(fila) if fila else 0
+                        for fila in tabla
+                    ]
+                
+                    print(
+                        f"[ESTRUCTURA PDF] "
+                        f"Pagina {page.page_number} | "
+                        f"Tabla {numero_tabla} | "
+                        f"Filas: {cantidad_filas} | "
+                        f"Columnas por fila: {columnas_por_fila}"
+                    )
+
                 print(
                     f"[DIAGNOSTICO PDF] "
                     f"Pagina: {len(texts)} | "
