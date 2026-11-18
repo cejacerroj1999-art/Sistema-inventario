@@ -116,14 +116,47 @@ def invoice_entry(actor, rows, products, github, mutate, scan):
         format_func=lambda x:'Seleccionar proveedor' if not x else f"{by_provider[x]['nombre']} · {by_provider[x]['rut']}",key=scope+':provider')
     cart=st.session_state.setdefault('cart:'+scope,[])
     st.subheader('Productos de la factura')
-    if imported:
-        st.dataframe(pd.DataFrame(imported.lines),hide_index=True)
-        done={x['source_index'] for x in cart}
-        index=st.selectbox('Línea a revisar',list(range(len(imported.lines))),
-            format_func=lambda i:f"{'✓ ' if i in done else ''}{i+1}. {imported.lines[i]['nombre']}",key=scope+':line')
-        _line_editor(catalog,cart,scan,scope+':resolve:'+str(index),imported.lines[index],index)
+    
+    if imported and imported.lines:
+        st.dataframe(
+            pd.DataFrame(imported.lines),
+            hide_index=True
+        )
+    
+        done = {x['source_index'] for x in cart}
+    
+        index = st.selectbox(
+            'Línea a revisar',
+            list(range(len(imported.lines))),
+            format_func=lambda i:
+                f"{'✓ ' if i in done else ''}"
+                f"{i+1}. {imported.lines[i]['nombre']}",
+            key=scope + ':line'
+        )
+    
+        _line_editor(
+            catalog,
+            cart,
+            scan,
+            scope + ':resolve:' + str(index),
+            imported.lines[index],
+            index
+        )
+    
     else:
-        _line_editor(catalog,cart,scan,scope+':manual_line')
+        if imported:
+            st.warning(
+                'No se identificaron productos automáticamente. '
+                'Agrégalos manualmente desde la factura.'
+            )
+    
+        _line_editor(
+            catalog,
+            cart,
+            scan,
+            scope + ':manual_line'
+        )
+
     st.subheader('Detalle confirmado')
     st.dataframe(pd.DataFrame(cart),hide_index=True)
     if cart:
