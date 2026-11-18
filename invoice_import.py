@@ -262,22 +262,6 @@ def read_invoice(data, filename):
                 found = []
                 tables = page.extract_tables()
                 
-                # Diagnóstico estructural sin mostrar contenido
-                for numero_tabla, tabla in enumerate(tables, start=1):
-                    cantidad_filas = len(tabla)
-                    columnas_por_fila = [
-                        len(fila) if fila else 0
-                        for fila in tabla
-                    ]
-                
-                    print(
-                        f"[ESTRUCTURA PDF] "
-                        f"Pagina {page.page_number} | "
-                        f"Tabla {numero_tabla} | "
-                        f"Filas: {cantidad_filas} | "
-                        f"Columnas por fila: {columnas_por_fila}"
-                    )
-
                 print(
                     f"[DIAGNOSTICO PDF] "
                     f"Pagina: {len(texts)} | "
@@ -339,22 +323,7 @@ def read_invoice(data, filename):
             f"{d['productos_texto']} productos desde texto"
             for d in diagnostico
         )
-        
-        # Solo para revisión local: no imprime contenido
-        for numero_tabla, tabla in enumerate(tables, start=1):
-            if tabla:
-                st.write(
-                    f"Página {page.page_number} - "
-                    f"Tabla {numero_tabla}"
-                )
-                st.write(
-                    f"Cantidad de filas: {len(tabla)}"
-                )
-                st.write(
-                    f"Columnas de la primera fila: "
-                    f"{len(tabla[0]) if tabla[0] else 0}"
-                )
-
+    
         raise ValueError(
             "No se identificó una tabla de productos compatible. "
             "Diagnóstico: " + (resumen or "sin datos")
