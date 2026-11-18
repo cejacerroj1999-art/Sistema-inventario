@@ -229,7 +229,9 @@ def read_invoice(data, filename):
         raise ValueError('El archivo supera 15 MB')
     if filename.lower().endswith('.xml'):
         return read_xml(data)
-    texts=[]; lines=[]
+    texts = []
+    lines = []
+    diagnostico = []
     if data.startswith(b'%PDF-'):
         import pdfplumber
         with pdfplumber.open(BytesIO(data)) as pdf:
@@ -283,6 +285,13 @@ def read_invoice(data, filename):
                 )
                 
                 lines.extend(found or fallback)
+                diagnostico.append({
+                    "pagina": len(texts),
+                    "caracteres": len(text),
+                    "tablas": len(tables),
+                    "productos_tabla": len(found),
+                    "productos_texto": len(fallback)
+                })
                 # Guardar el texto de la página
 #                texts.append(text)
             
@@ -306,5 +315,19 @@ def read_invoice(data, filename):
     result=metadata('\n'.join(texts));result.lines=lines
     result.warnings.append('Lectura automática: confirma emisor, folio, fecha, cantidades y costos. El OCR puede omitir o confundir líneas.')
     if not lines:
-        raise ValueError('No se identificó una tabla de productos compatible. Prueba el XML DTE o un PDF más claro. Necesitamos una factura de ejemplo para adaptar este formato; no se inventarán productos.')
-    return result
+    resumen = "; ".join(
+        f"Página {d['pagina']}: "
+        f"{d['caracteres']} caracteres, "
+        f"{d['tablas']} tablas, "
+        f"{d['productos_tabla']} productos desde tablas, "
+        f"{d['productos_texto']} productos desde texto"
+        for d in diagnostico
+    )
+
+    raise ValueError(
+        "No se identificó una tabla de productos compatible. "
+        "Diagnóstico: " + (resumen or "sin datos")
+    )
+#    if not lines:
+ #       raise ValueError('No se identificó una tabla de productos compatible. Prueba el XML DTE o un PDF más claro. Necesitamos una factura de ejemplo para adaptar este formato; no se inventarán productos.')
+  #  return result
