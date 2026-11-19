@@ -258,11 +258,13 @@ def text_lines(text):
     return output
 
 
+
 def pdf_product_lines(page):
     """
-    Extrae productos utilizando las posiciones
-    de las palabras de la primera página.
+    Extrae productos desde la primera página del PDF,
+    utilizando las posiciones reales de las columnas.
     """
+
     words = page.extract_words(
         x_tolerance=2,
         y_tolerance=3,
@@ -272,95 +274,133 @@ def pdf_product_lines(page):
     if not words:
         return []
 
-    # Agrupar palabras por su posición vertical
+    # Agrupar palabras por línea visual
     rows = []
 
-    for word in sorted(words, key=lambda w: (w['top'], w['x0'])):
-        matched = None
-
-        for row in rows:
-            if abs(row['top'] - word['top']) <= 3:
-                matched = row
-                break
-
-        if matched is None:
-            matched = {'top': word['top'], 'words': []}
-            rows.append(matched)
-
-        matched['words'].append(word)
-
-    rows.sort(key=lambda r: r['top'])
-
-    # Buscar encabezados de productos
-    header = None
-
-    for i, row in enumerate(rows):
-        labels = [norm(w['text']) for w in row['words']]
+    for word in sorted(
+        words,
+        key=lambda w: (
+            (w['top'] + w['bottom']) / 2,
+            w['x0']
+        )
+    ):
+        center_y = (word['top'] + word['bottom']) / 2
 
         if (
-            any('descripcion' in x for x in labels)
-            and any('cantidad' in x or x == 'cant' for x in labels)
-            and any('unitario' in x or 'precio' in x for x in labels)
+            rows
+            and abs(rows[-1]['y'] - center_y) <= 4
         ):
-            header = i
-            break
+            rows[-1]['words'].append(word)
+        else:
+            rows.append({
+                'y': center_y,
+                'words': [word]
+            })
 
-    if header is None:
-        return []
+    for row in rows:
+        row['words'].sort(key=lambda w: w['x0'])
 
-    # Identificar posiciones horizontales de columnas
-    header_words = rows[header]['words']
-
+    # Localizar encabezados de la tabla
+    header_index = None
     columns = {}
 
-    for word in header_words:
-        label = norm(word['text'])
+    for i, row in enumerate(rows):
+        found = {}
 
-        if 'descripcion' in label:
-            columns['name'] = word['x0']
-        elif 'cantidad' in label or label == 'cant':
-            columns['qty'] = word['x0']
-        elif 'unitario' in label or 'precio' in label:
-            columns['cost'] = word['x0']
-        elif 'subtotal' in label or label == 'total':
-            columns['amount'] = word['x0']
+        for word in row['words']:
+            label = norm(word['text']).strip()
 
-    if not all(k in columns for k in ('name', 'qty', 'cost')):
+            if label in ('codigo', 'cod.'):
+                found['code'] = word['x0']
+
+            elif 'descripcion' in label:
+                found['name'] = word['x0']
+
+            elif 'cantidad' in label or label == 'cant':
+                found['qty'] = word['x0']
+
+            elif (
+                'precio' in label
+                or 'unitario' in label
+            ):
+                found['cost'] = word['x0']
+
+            elif (
+                label in ('valor', 'subtotal', 'total')
+            ):
+                found['amount'] = word['x0']
+
+        if all(
+            key in found
+            for key in ('name', 'qty', 'cost')
+        ):
+            header_index = i
+            columns = found
+            break
+
+    if header_index is None:
         return []
+
+    # Ordenar columnas por su posición horizontal
+    ordered = sorted(
+        columns.items(),
+        key=lambda item: item[1]
+    )
+
+    # Límites entre columnas
+    boundaries = []
+
+    for i in range(len(ordered) - 1):
+        midpoint = (
+            ordered[i][1] + ordered[i + 1][1]
+        ) / 2
+        boundaries.append(midpoint)
+
+    def column_for_word(word):
+        x = (word['x0'] + word['x1']) / 2
+
+        for i, boundary in enumerate(boundaries):
+            if x < boundary:
+                return ordered[i][0]
+
+        return ordered[-1][0]
 
     output = []
 
-    # Procesar líneas debajo del encabezado
-    for row in rows[header + 1:]:
-        text = ' '.join(w['text'] for w in row['words'])
+    for row in rows[header_index + 1:]:
 
-        if norm(text).startswith((
-            'subtotal', 'total neto',
-            'iva', 'monto total',
+        row_text = ' '.join(
+            w['text'] for w in row['words']
+        )
+
+        normalized = norm(row_text).strip()
+
+        if normalized.startswith((
+            'subtotal',
+            'total neto',
+            'monto total',
             'observaciones'
         )):
             break
 
         cells = {
-            'name': [],
-            'qty': [],
-            'cost': [],
-            'amount': []
+            key: []
+            for key in columns
         }
 
         for word in row['words']:
-            x = word['x0']
+            key = column_for_word(word)
+            cells[key].append(word['text'])
 
-            nearest = min(
-                columns,
-                key=lambda key: abs(x - columns[key])
-            )
+        values = {
+            key: ' '.join(parts).strip()
+            for key, parts in cells.items()
+        }
 
-            cells[nearest].append(word['text'])
-
-        name = ' '.join(cells['name']).strip()
-        qty_text = ' '.join(cells['qty']).strip()
-        cost_text = ' '.join(cells['cost']).strip()
+        name = values.get('name', '')
+        qty_text = values.get('qty', '')
+        cost_text = values.get('cost', '')
+        code = values.get('code', '')
 
         if not name or not qty_text or not cost_text:
             continue
@@ -372,8 +412,15 @@ def pdf_product_lines(page):
             if qty <= 0:
                 continue
 
+            # Código del proveedor, separado de
+            # la descripción cuando corresponda.
+            full_name = (
+                f'{code} {name}'.strip()
+                if code else name
+            )
+
             output.append({
-                'nombre': name,
+                'nombre': full_name,
                 'cantidad': float(qty),
                 'costo_unitario': float(cost),
                 'codigo_de_barras': ''
