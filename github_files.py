@@ -39,24 +39,75 @@ class GitHubFiles:
             return dict(archivo_path=path, archivo_url=obj['html_url'], archivo_sha=obj['sha'])
         if existing.status_code != 404:
             raise RuntimeError(f'GitHub consulta: HTTP {existing.status_code}')
+#        for _ in range(3):
+ #           response = self.session.put(url, json={'message': f'Archivo {kind} {digest[:12]}',
+  #              'content': base64.b64encode(data).decode(), 'branch': self.branch}, timeout=45)
+   #         if response.status_code in (200, 201):
+    #            obj = response.json()['content']
+     #           return dict(archivo_path=path, archivo_url=obj['html_url'], archivo_sha=obj['sha'])
+      #      if response.status_code not in (409, 422):
+       #         break
+            # Otro proceso pudo subir exactamente el mismo archivo.
+        #    r = self.session.get(url, params={'ref': self.branch}, timeout=30)
+         #   if r.status_code == 200:
+          #      obj = r.json()
+           #     return dict(archivo_path=path, archivo_url=obj['html_url'], archivo_sha=obj['sha'])
+            #raise RuntimeError(
+             #   f'GitHub carga: HTTP {response.status_code}; '
+              #  f'Error: {response.json().get("message", "Sin detalle")}'
+            #)
+        #raise RuntimeError(f'GitHub carga: HTTP {response.status_code}; reintente')
+    
         for _ in range(3):
-            response = self.session.put(url, json={'message': f'Archivo {kind} {digest[:12]}',
-                'content': base64.b64encode(data).decode(), 'branch': self.branch}, timeout=45)
+            response = self.session.put(
+                url,
+                json={
+                    'message': f'Archivo {kind} {digest[:12]}',
+                    'content': base64.b64encode(data).decode(),
+                    'branch': self.branch
+                },
+                timeout=45
+            )
+
             if response.status_code in (200, 201):
                 obj = response.json()['content']
-                return dict(archivo_path=path, archivo_url=obj['html_url'], archivo_sha=obj['sha'])
+                return dict(
+                    archivo_path=path,
+                    archivo_url=obj['html_url'],
+                    archivo_sha=obj['sha']
+                )
+
             if response.status_code not in (409, 422):
                 break
-            # Otro proceso pudo subir exactamente el mismo archivo.
-            r = self.session.get(url, params={'ref': self.branch}, timeout=30)
+
+            # Comprobar si otro proceso ya subió el archivo
+            r = self.session.get(
+                url,
+                params={'ref': self.branch},
+                timeout=30
+            )
+
             if r.status_code == 200:
                 obj = r.json()
-                return dict(archivo_path=path, archivo_url=obj['html_url'], archivo_sha=obj['sha'])
-            raise RuntimeError(
-                f'GitHub carga: HTTP {response.status_code}; '
-                f'Error: {response.json().get("message", "Sin detalle")}'
+                return dict(
+                    archivo_path=path,
+                    archivo_url=obj['html_url'],
+                    archivo_sha=obj['sha']
+                )
+
+        # IMPORTANTE: fuera del ciclo for
+        try:
+            mensaje = response.json().get(
+                'message', 'Sin detalle'
             )
-        #raise RuntimeError(f'GitHub carga: HTTP {response.status_code}; reintente')
+        except ValueError:
+            mensaje = 'Sin detalle'
+
+        raise RuntimeError(
+            f'GitHub carga: HTTP {response.status_code}; '
+            f'Error: {mensaje}'
+        )
+
 
     def download(self, path, sha):
         # Leer el blob concreto, aunque el archivo haya cambiado en la rama.
