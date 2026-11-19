@@ -132,7 +132,7 @@ def catalog():
         barcode = st.text_input('Código de barras (texto; conserva ceros iniciales)', value=scanned or p.get('codigo_de_barras') or '')
         kind = st.text_input('Tipo de producto', value=p.get('tipo','General'))
         price = st.number_input('Precio de venta CLP', min_value=0., value=float(p.get('precio_venta',0)))
-        minimum = st.number_input('Umbral de bajo stock', min_value=0., value=float(p.get('stock_minimo',5)))
+        minimum = st.number_input('Umbral de bajo stock', min_value=0, value=int(p.get('stock_minimo',5)),step=1,format='%d')
         if st.form_submit_button('Guardar producto'):
             if not name.strip() or not kind.strip():
                 st.warning('Completa nombre y tipo.')
