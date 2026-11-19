@@ -382,6 +382,14 @@ def pdf_product_lines(page):
 
         # No usar tax ni discount como cantidad/precio
         if not name or not qty_text or not cost_text:
+            if name or qty_text or cost_text:
+                import logging
+                logging.warning(
+                    "Fila incompleta: nombre=%s, cantidad=%s, precio=%s",
+                    bool(name),
+                    bool(qty_text),
+                    bool(cost_text)
+                )
             continue
 
         try:
@@ -404,6 +412,10 @@ def pdf_product_lines(page):
             })
 
         except ValueError:
+            import logging
+            logging.warning(
+                "Producto descartado por conversión numérica"
+            )
             continue
 
     return output
