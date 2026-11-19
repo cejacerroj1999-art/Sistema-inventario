@@ -237,6 +237,6 @@ def invoice_entry(actor, rows, products, github, mutate, scan):
                     'pero se esperaba un diccionario.'
                 )
 
-    payload.update(archivo)
+            payload.update(archivo)
         result=mutate('factura',payload,scope)
         st.success(f"Factura guardada: {result['id']}. Autorízala en Documentos para incorporar el stock.")
