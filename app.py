@@ -388,6 +388,8 @@ except Exception as error:
         'Ubicación: ' + (' → '.join(locations) or 'no disponible')
     ])
     logging.error('Diagnóstico inventario: %s', diagnostic)
+    if isinstance(error, RuntimeError) and str(error).startswith('GitHub carga:'):
+        st.error(str(error))
     st.error(f'No se pudo completar la operación. Referencia: {reference}. Puedes reintentar o volver desde el menú.')
     with st.expander('Diagnóstico técnico sin credenciales', expanded=True):
         st.code(diagnostic, language='text')
