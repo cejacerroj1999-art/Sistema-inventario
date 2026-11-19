@@ -227,6 +227,16 @@ def invoice_entry(actor, rows, products, github, mutate, scan):
         try: detail=consolidate(cart)
         except ValueError as exc: st.warning(str(exc));return
         payload=dict(tipo='factura',modo_ingreso=mode,numero=number.strip(),fecha=date.isoformat(),proveedor_id=provider_id,detalle=detail)
-        if uploaded: payload.update(github().upload(uploaded,'factura'))
+        #if uploaded: payload.update(github().upload(uploaded,'factura'))
+        if uploaded:
+            archivo = github().upload(uploaded, 'factura')
+        
+            if not isinstance(archivo, dict):
+                raise TypeError(
+                    f'GitHub upload devolvió {type(archivo).__name__}, '
+                    'pero se esperaba un diccionario.'
+                )
+
+    payload.update(archivo)
         result=mutate('factura',payload,scope)
         st.success(f"Factura guardada: {result['id']}. Autorízala en Documentos para incorporar el stock.")
