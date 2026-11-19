@@ -388,6 +388,15 @@ except Exception as error:
         'Ubicación: ' + (' → '.join(locations) or 'no disponible')
     ])
     logging.error('Diagnóstico inventario: %s', diagnostic)
+    if isinstance(error, TypeError):
+        logging.error(
+            'Detalle TypeError: %s',
+            str(error)[:500]
+        )
+        st.error(
+            'Detalle del TypeError: '
+            + str(error)[:500]
+        )
     if isinstance(error, RuntimeError) and str(error).startswith('GitHub carga:'):
         st.error(str(error))
     st.error(f'No se pudo completar la operación. Referencia: {reference}. Puedes reintentar o volver desde el menú.')
