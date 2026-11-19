@@ -490,17 +490,41 @@ def read_invoice(data, filename):
                 )
 
             texts.append(text)
+            
+            # Obtener candidatos de los tres métodos
+            positional = pdf_product_lines(page)
+            
+            from_tables = []
+            for table in page.extract_tables():
+                from_tables.extend(table_lines(table))
+            
+            from_text = text_lines(text)
+            
+            # Combinar sin duplicar productos idénticos
+            lines = []
+            seen = set()
+            
+            for item in positional + from_tables + from_text:
+                key = (
+                    norm(item.get('nombre', '')).strip(),
+                    round(float(item.get('cantidad', 0)), 4)
+                )
+            
+                if key not in seen:
+                    seen.add(key)
+                    lines.append(item)
+
             # Primero intentar extraer productos por posiciones
-            lines = pdf_product_lines(page)
+#            lines = pdf_product_lines(page)
             
             # Si falla, intentar las tablas tradicionales
-            if not lines:
-                for table in page.extract_tables():
-                    lines.extend(table_lines(table))
+ #           if not lines:
+  #              for table in page.extract_tables():
+   #                 lines.extend(table_lines(table))
             
             # Último intento: lectura del texto
-            if not lines:
-                lines = text_lines(text)
+    #        if not lines:
+     #           lines = text_lines(text)
             # Intentar obtener productos desde tablas
 #            found = []
 
