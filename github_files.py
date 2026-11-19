@@ -52,7 +52,11 @@ class GitHubFiles:
             if r.status_code == 200:
                 obj = r.json()
                 return dict(archivo_path=path, archivo_url=obj['html_url'], archivo_sha=obj['sha'])
-        raise RuntimeError(f'GitHub carga: HTTP {response.status_code}; reintente')
+            raise RuntimeError(
+                f'GitHub carga: HTTP {response.status_code}; '
+                f'Error: {response.json().get("message", "Sin detalle")}'
+            )
+        #raise RuntimeError(f'GitHub carga: HTTP {response.status_code}; reintente')
 
     def download(self, path, sha):
         # Leer el blob concreto, aunque el archivo haya cambiado en la rama.
