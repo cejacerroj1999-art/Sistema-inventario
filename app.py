@@ -143,7 +143,7 @@ def catalog():
     p = product_choice(data, key='adjustprod')
     if p:
         with st.form('adjust'):
-            value = st.number_input('Stock contado', min_value=0., value=float(p['stock']), step=1.)
+            value = st.number_input('Stock contado', min_value=0, value=int(p['stock']), step=1,format='%d')
             reason = st.text_input('Motivo obligatorio')
             if st.form_submit_button('Registrar ajuste'):
                 mutate('ajuste', dict(producto_id=p['id'], version=p['version'], stock=value, motivo=reason), 'ajuste')
