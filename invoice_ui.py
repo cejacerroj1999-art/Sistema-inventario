@@ -99,9 +99,64 @@ def invoice_entry(actor, rows, products, github, mutate, scan):
         st.caption('Los campos siguientes se completaron con la lectura. Corrige los que no se hayan reconocido; no vuelvas a transcribir todo el detalle.')
     catalog=products()
     providers=rows('proveedor')
-    if not providers:
-        st.warning('El administrador debe agregar el proveedor antes de guardar la factura.')
-        return
+#    if not providers:
+ #       st.warning('El administrador debe agregar el proveedor antes de guardar la factura.')
+  #      return
+    if not providers or (
+        imported
+        and imported.provider_rut
+        and not any(
+            rut_key(p['rut']) == rut_key(imported.provider_rut)
+            for p in providers
+        )
+    ):
+        st.info('Proveedor no registrado. Puedes agregarlo aquí.')
+    
+    with st.expander('Registrar nuevo proveedor'):
+        with st.form(scope + ':new_provider'):
+            rut = st.text_input(
+                'RUT',
+                value=imported.provider_rut if imported else ''
+            )
+            nombre = st.text_input(
+                'Razón social',
+                value=imported.provider_name if imported else ''
+            )
+            email = st.text_input('Correo')
+            telefono = st.text_input('Teléfono')
+    
+            guardar = st.form_submit_button('Guardar proveedor')
+    
+        if guardar:
+            if not rut.strip() or not nombre.strip():
+                st.warning('Completa RUT y razón social.')
+                return
+    
+            if any(rut_key(p['rut']) == rut_key(rut) for p in providers):
+                st.warning('Este proveedor ya existe.')
+                return
+    
+            mutate(
+                'proveedor',
+                {
+                    'rut': rut.strip().upper(),
+                    'nombre': nombre.strip(),
+                    'email': email.strip(),
+                    'numero': telefono.strip()
+                },
+                scope + ':new_provider'
+            )
+    
+            nuevos = rows('proveedor')
+            creado = next(
+                (p for p in nuevos if rut_key(p['rut']) == rut_key(rut)),
+                None
+            )
+    
+            if creado:
+                st.session_state[scope + ':provider'] = creado['id']
+    
+            st.rerun()
     by_provider={p['id']:p for p in providers}
     default_provider=next((p['id'] for p in providers if imported and rut_key(p['rut'])==rut_key(imported.provider_rut)),None)
     options=['']+list(by_provider)
