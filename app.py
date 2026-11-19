@@ -92,7 +92,7 @@ def inventory(low=False):
     st.subheader('Bajo stock' if low else 'Inventario')
     a, b = st.columns(2)
     a.metric('Productos distintos', len(data))
-    b.metric('Unidades disponibles', f"{sum(float(p['stock']) for p in data):,.3f}")
+    b.metric('Unidades disponibles', f"{sum(int(p['stock']) for p in data):,}")
     # Todos pueden consultar bajo stock; vendedor ve sólo información operativa.
     if actor['rol'] == 'vendedor':
         data = [{k: p[k] for k in ('id','codigo_de_barras','nombre','tipo','stock','precio_venta','stock_minimo')} for p in data]
@@ -182,7 +182,7 @@ def document_entry():
     cart = st.session_state.setdefault(cart_key, [])
     if p:
         with st.form('line'):
-            quantity = st.number_input('Cantidad', min_value=.001, value=1., step=1., format='%.3f')
+            quantity = st.number_input('Cantidad', min_value=1, value=1., step=1., format='%d')
             cost = st.number_input('Costo unitario de compra CLP', min_value=0., value=float(p['valor_unitario']), disabled=kind!='factura')
             if st.form_submit_button('Agregar producto al detalle'):
                 if kind=='factura' and not p['codigo_de_barras']:
