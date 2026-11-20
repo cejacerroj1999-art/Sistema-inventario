@@ -47,7 +47,7 @@ def _line_editor(catalog, cart, scan, scope, source=None, source_index=None):
         else:
             kind=p['tipo'];price=p['precio_venta'];minimum=p['stock_minimo']
             st.caption(f"Tipo: {kind} · Precio de venta: ${float(price):,.0f} · Stock actual: {p['stock']}")
-        quantity=st.number_input('Cantidad que ingresa',min_value=1,value=int((source or {}).get('cantidad',1)),step=1.,format='%d')
+        quantity=st.number_input('Cantidad que ingresa',min_value=1,value=int((source or {}).get('cantidad',1)),step=1,format='%d')
         cost=st.number_input('Costo unitario de compra CLP',min_value=0.,value=float((source or {}).get('costo_unitario',p.get('valor_unitario',0))))
         submit=st.form_submit_button('Confirmar producto en la factura')
     if submit:
